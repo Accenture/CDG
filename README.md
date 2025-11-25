@@ -1,5 +1,10 @@
   git submodule update --init --recursive
 
+## Paths (Azure VM)
+
+- **Model cache**: `/mnt/dev/model_ckpt/hf_cache`
+- **Results output**: `/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results`
+
 ## Setup
 
 ```bash

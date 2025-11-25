@@ -243,7 +243,7 @@ def load_results(results_dir: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--results_dir', type=str, default='offline_results')
+    parser.add_argument('--results_dir', type=str, default='/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results')
     args = parser.parse_args()
 
     print(f"Loading results from {args.results_dir}...")
