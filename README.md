@@ -18,9 +18,12 @@ conda activate sampling_credit
 # Prepare AIME 2025 dataset
 python scripts/prepare_aime2025.py
 
-# Run offline inference (8 GPUs, 256 samples per question)
+# Run offline inference - RECOMMENDED: batch mode (uses vLLM native batching)
 # --rid auto-generates as run001, run002, etc. if not specified
-seq 0 29 | parallel -j8 'CUDA_VISIBLE_DEVICES=$(({} % 8)) python scripts/run_offline_single.py --qid {} --budget 256'
+python scripts/run_offline_batch.py --budget 256 --tensor_parallel_size 8
+
+# Alternative: single question mode (useful for debugging)
+python scripts/run_offline_single.py --qid 0 --budget 256
 
 # Analyze results
 python analysis/compute_upper_bound.py --results_dir offline_results/run001/
