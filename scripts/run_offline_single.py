@@ -84,7 +84,7 @@ def main():
     prompt = prepare_prompt(question, deep_llm.tokenizer, args.model_type)
 
     sampling_params = SamplingParams(
-        n=args.budget,
+        n=1,  # budget controls number of prompts in deepthink, not n
         temperature=args.temperature,
         top_p=args.top_p,
         max_tokens=args.max_tokens,
