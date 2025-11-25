@@ -5,15 +5,14 @@ channels:
   - nvidia
   - defaults
 dependencies:
-  - python=3.10
-  - pytorch
-  - pytorch-cuda=12.1
+  - python=3.11
   - numpy
   - pandas
   - tqdm
   - pip
   - pip:
     - vllm
+    - torch
     - transformers
     - datasets
     - dynasor
