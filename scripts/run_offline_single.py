@@ -1,0 +1,121 @@
+"""
+Run offline inference for a single question - simpler alternative to shell script.
+Can be used with GNU parallel or just a loop.
+
+Usage:
+    # Single question
+    CUDA_VISIBLE_DEVICES=0 python run_offline_single.py --qid 0 --budget 256
+
+    # Parallel with GNU parallel (8 GPUs, 30 questions)
+    seq 0 29 | parallel -j8 'CUDA_VISIBLE_DEVICES=$(( {} % 8 )) python run_offline_single.py --qid {} --budget 256'
+"""
+import sys
+import os
+
+# Add deepconf to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
+
+import json
+import pickle
+import argparse
+from datetime import datetime
+from vllm import SamplingParams
+from deepconf import DeepThinkLLM
+
+
+def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> str:
+    """Prepare prompt for a single question"""
+    if model_type == "deepseek":
+        messages = [
+            {"role": "system", "content": "该助手为DeepSeek-R1，由深度求索公司创造。\n今天是2025年5月28日，星期一。\n"},
+            {"role": "user", "content": question}
+        ]
+    else:
+        messages = [{"role": "user", "content": question}]
+
+    return tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Run offline inference for a single question')
+    parser.add_argument('--model', type=str, default="deepseek-ai/DeepSeek-R1-0528-Qwen3-8B")
+    parser.add_argument('--tensor_parallel_size', type=int, default=1)
+    parser.add_argument('--dataset', type=str, default="aime_2025.jsonl")
+    parser.add_argument('--qid', type=int, required=True)
+    parser.add_argument('--rid', type=str, default="offline")
+    parser.add_argument('--budget', type=int, default=256)
+    parser.add_argument('--window_size', type=int, default=2048)
+    parser.add_argument('--max_tokens', type=int, default=130000)
+    parser.add_argument('--model_type', type=str, default="deepseek")
+    parser.add_argument('--temperature', type=float, default=0.6)
+    parser.add_argument('--top_p', type=float, default=0.95)
+    parser.add_argument('--output_dir', type=str, default="offline_results")
+
+    args = parser.parse_args()
+
+    # Load dataset
+    with open(args.dataset, 'r', encoding='utf-8') as file:
+        data = [json.loads(line.strip()) for line in file]
+
+    if args.qid >= len(data) or args.qid < 0:
+        raise ValueError(f"Question ID {args.qid} out of range (0-{len(data)-1})")
+
+    question_data = data[args.qid]
+    question = question_data['question']
+    ground_truth = str(question_data.get('answer', '')).strip()
+
+    print(f"Processing question {args.qid}: {question[:100]}...")
+
+    # Initialize model
+    deep_llm = DeepThinkLLM(
+        model=args.model,
+        tensor_parallel_size=args.tensor_parallel_size,
+        enable_prefix_caching=True
+    )
+
+    prompt = prepare_prompt(question, deep_llm.tokenizer, args.model_type)
+
+    sampling_params = SamplingParams(
+        n=args.budget,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        logprobs=20,
+    )
+
+    # Run inference
+    result = deep_llm.deepthink(
+        prompt=prompt,
+        mode="offline",
+        budget=args.budget,
+        window_size=args.window_size,
+        sampling_params=sampling_params,
+        compute_multiple_voting=True
+    )
+
+    # Save results
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_data = result.to_dict()
+    result_data.update({
+        'question': question,
+        'ground_truth': ground_truth,
+        'qid': args.qid,
+        'run_id': args.rid,
+    })
+
+    result_filename = f"{args.output_dir}/offline_qid{args.qid}_rid{args.rid}_{timestamp}.pkl"
+
+    with open(result_filename, 'wb') as f:
+        pickle.dump(result_data, f)
+
+    print(f"Results saved to {result_filename}")
+
+
+if __name__ == "__main__":
+    main()

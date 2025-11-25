@@ -1,0 +1,20 @@
+name: sampling_credit
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - pytorch-cuda=12.1
+  - numpy
+  - pandas
+  - tqdm
+  - pip
+  - pip:
+    - vllm
+    - transformers
+    - datasets
+    - dynasor
+    - accelerate
