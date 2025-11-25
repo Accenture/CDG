@@ -90,6 +90,10 @@ def main():
     parser.add_argument('--model_type', type=str, default="deepseek")
     parser.add_argument('--temperature', type=float, default=0.6)
     parser.add_argument('--top_p', type=float, default=0.95)
+    parser.add_argument('--max_num_seqs', type=int, default=64,
+                        help="Maximum number of concurrent sequences (limits memory usage)")
+    parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
+                        help="GPU memory utilization (0.0-1.0)")
     parser.add_argument('--output_dir', type=str,
                         default="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
 
@@ -126,7 +130,9 @@ def main():
     deep_llm = DeepThinkLLM(
         model=args.model,
         tensor_parallel_size=args.tensor_parallel_size,
-        enable_prefix_caching=True
+        enable_prefix_caching=True,
+        max_num_seqs=args.max_num_seqs,
+        gpu_memory_utilization=args.gpu_memory_utilization,
     )
 
     # Prepare all prompts
