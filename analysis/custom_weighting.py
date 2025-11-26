@@ -9,6 +9,7 @@ Current focus: confidence-based strategies (attention requires VLLM modification
 
 Usage:
     python custom_weighting.py --results_dir offline_results/
+    python custom_weighting.py --results_dir offline_results/ --parallel 16
 """
 import os
 import sys
@@ -18,6 +19,9 @@ import numpy as np
 from collections import defaultdict, Counter
 from pathlib import Path
 from typing import List, Dict, Callable, Optional
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from functools import partial
+import multiprocessing as mp
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
 
@@ -344,6 +348,122 @@ def smooth_blend_weight(trace: Dict, midpoint: float = 3.0, steepness: float = 2
     return (1 - blend) * x + blend * (1/x)
 
 
+# ============= ATTENTION-BASED WEIGHTING =============
+#
+# These strategies use actual attention weights (when available).
+# Requires running with enforce_eager=True and attention capture enabled.
+# Falls back gracefully if attention data not present.
+# =============================================================================
+
+def attention_received_weight(trace: Dict) -> float:
+    """
+    Weight based on ATTENTION RECEIVED (forking signal).
+
+    Intuition: Traces where tokens received lots of attention from later tokens
+    have many "forking points" - decisions that influenced subsequent reasoning.
+
+    High total attention_received → many important decisions → could be good OR risky
+    We penalize high forking (more decision points = more chances for error).
+    """
+    attn_received = trace.get('attention_received')
+    if attn_received is None or len(attn_received) == 0:
+        return 1.0  # Fallback to uniform if no attention data
+
+    # Lower total attention received → fewer forking points → more stable
+    total_received = np.sum(attn_received)
+    return 1.0 / (1.0 + total_received / len(attn_received))
+
+
+def self_attention_weight(trace: Dict) -> float:
+    """
+    Weight based on SELF-ATTENTION (self-reliance signal).
+
+    Intuition: Tokens with high self-attention are "confident" in their own
+    representation and don't need to look at context as much.
+
+    High mean self-attention → model was self-reliant → stable reasoning
+    """
+    self_attn = trace.get('self_attention')
+    if self_attn is None or len(self_attn) == 0:
+        return 1.0  # Fallback to uniform if no attention data
+
+    # Higher self-attention → higher weight
+    mean_self_attn = np.mean(self_attn)
+    return mean_self_attn + 0.1  # +0.1 to avoid zero weights
+
+
+def attention_entropy_weight(trace: Dict) -> float:
+    """
+    Weight based on ATTENTION ENTROPY (decision spread signal).
+
+    Intuition: High entropy = attention spread across many tokens = uncertain
+    Low entropy = focused attention = confident decision
+
+    We reward low-entropy traces (focused, confident reasoning).
+    """
+    attn_entropy = trace.get('attention_entropy')
+    if attn_entropy is None or len(attn_entropy) == 0:
+        return 1.0  # Fallback to uniform if no attention data
+
+    # Lower entropy → higher weight
+    mean_entropy = np.mean(attn_entropy)
+    return 1.0 / (1.0 + mean_entropy)
+
+
+def combined_attention_weight(trace: Dict) -> float:
+    """
+    Combine all attention signals with confidence.
+
+    Geometric mean of:
+    - Inverse confidence (existing)
+    - Self-attention (new)
+    - Inverse attention entropy (new)
+
+    Falls back to confidence-only if attention data not available.
+    """
+    # Confidence component (always available)
+    conf_weight = inverse_conf_weight(trace)
+
+    # Attention components (may not be available)
+    self_attn = trace.get('self_attention')
+    attn_entropy = trace.get('attention_entropy')
+
+    if self_attn is None or attn_entropy is None:
+        return conf_weight  # Fallback to confidence only
+
+    self_attn_weight = np.mean(self_attn) + 0.1
+    entropy_weight = 1.0 / (1.0 + np.mean(attn_entropy))
+
+    # Geometric mean of all three
+    return (conf_weight * self_attn_weight * entropy_weight) ** (1/3)
+
+
+def forking_penalty_weight(trace: Dict) -> float:
+    """
+    Penalize traces with high forking (many important decision points).
+
+    Uses attention_received to identify forking tokens, then penalizes
+    traces that had many high-attention tokens.
+
+    Intuition: A trace with many forking points had to make many
+    important decisions → more chances to go wrong.
+    """
+    attn_received = trace.get('attention_received')
+    if attn_received is None or len(attn_received) == 0:
+        return inverse_conf_weight(trace)  # Fallback
+
+    # Count "forking tokens" (tokens with above-median attention received)
+    threshold = np.median(attn_received)
+    num_forking = np.sum(attn_received > threshold)
+    forking_ratio = num_forking / len(attn_received)
+
+    # Combine with confidence
+    conf_weight = inverse_conf_weight(trace)
+    forking_penalty = 1.0 / (1.0 + forking_ratio)
+
+    return conf_weight * forking_penalty
+
+
 # ============= TOKEN-LEVEL WEIGHTING (Use Case 1) =============
 #
 # Instead of using mean(conf) directly, weight individual tokens first,
@@ -463,20 +583,30 @@ WEIGHTING_STRATEGIES = {
     'token_blend': token_level_smooth_blend,
     'token_blend_m2': lambda t: token_level_smooth_blend(t, midpoint=2.0),
     'token_blend_m4': lambda t: token_level_smooth_blend(t, midpoint=4.0),
+
+    # Attention-based weighting (requires attention capture data)
+    'attn_received': attention_received_weight,
+    'self_attn': self_attention_weight,
+    'attn_entropy': attention_entropy_weight,
+    'combined_attn': combined_attention_weight,
+    'forking_penalty': forking_penalty_weight,
 }
 
 
-def evaluate_strategy(results_by_qid: dict, weight_fn: Callable) -> dict:
-    """Evaluate a weighting strategy across all questions"""
-    correct = 0
-    total = 0
+def precompute_trace_data(results_by_qid: dict) -> dict:
+    """
+    Precompute and flatten trace data for faster evaluation.
+    This avoids redundant work when evaluating multiple strategies.
 
-    per_question = {}
+    Returns dict: {qid: {'traces': [...], 'ground_truth': str, 'answers': [...]}}
+    """
+    precomputed = {}
+    has_attention_data = False
 
     for qid, results_list in results_by_qid.items():
-        # Combine traces
         all_traces = []
         ground_truth = None
+
         for result in results_list:
             all_traces.extend(result.get('all_traces', []))
             if ground_truth is None:
@@ -485,19 +615,54 @@ def evaluate_strategy(results_by_qid: dict, weight_fn: Callable) -> dict:
         if not all_traces or not ground_truth:
             continue
 
-        total += 1
-
-        # Get answers and weights
+        # Pre-extract answers (done once, not per strategy)
         answers = []
-        weights = []
+        valid_traces = []
         for trace in all_traces:
             answer = trace.get('extracted_answer')
             if answer:
                 answers.append(answer)
-                weights.append(weight_fn(trace))
+                valid_traces.append(trace)
+                # Check if attention data is available
+                if trace.get('attention_received') is not None:
+                    has_attention_data = True
 
-        if not answers:
-            continue
+        if answers:
+            precomputed[qid] = {
+                'traces': valid_traces,
+                'ground_truth': ground_truth,
+                'answers': answers,
+                # Pre-convert confs to numpy for faster computation
+                'confs_arrays': [np.array(t.get('confs', []), dtype=np.float32)
+                                 for t in valid_traces],
+            }
+
+    if has_attention_data:
+        print("Attention data detected - attention-based strategies will be evaluated")
+    else:
+        print("No attention data found - attention-based strategies will fall back to uniform/confidence")
+
+    return precomputed
+
+
+def evaluate_strategy(results_by_qid: dict, weight_fn: Callable, precomputed: dict = None) -> dict:
+    """Evaluate a weighting strategy across all questions."""
+    correct = 0
+    total = 0
+    per_question = {}
+
+    # Use precomputed data if available
+    if precomputed is None:
+        precomputed = precompute_trace_data(results_by_qid)
+
+    for qid, data in precomputed.items():
+        total += 1
+        traces = data['traces']
+        answers = data['answers']
+        ground_truth = data['ground_truth']
+
+        # Compute weights for this strategy
+        weights = [weight_fn(trace) for trace in traces]
 
         # Vote
         predicted = weighted_vote(answers, weights)
@@ -524,51 +689,162 @@ def evaluate_strategy(results_by_qid: dict, weight_fn: Callable) -> dict:
     }
 
 
-def load_results(results_dir: str) -> dict:
-    results_by_qid = defaultdict(list)
-    for filename in Path(results_dir).glob("*.pkl"):
-        if 'stats' in filename.name:
-            continue
+def _evaluate_single_strategy(args: tuple) -> tuple:
+    """Worker function for parallel strategy evaluation."""
+    name, weight_fn, precomputed = args
+    result = evaluate_strategy(None, weight_fn, precomputed)
+    return name, result
+
+
+def evaluate_all_strategies_parallel(precomputed: dict, strategies: dict, num_workers: int = None) -> dict:
+    """Evaluate all strategies in parallel using ProcessPoolExecutor."""
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), len(strategies))
+
+    # Note: For ProcessPoolExecutor, we need picklable functions
+    # Lambda functions aren't picklable, so we fall back to sequential for those
+    picklable_strategies = {}
+    non_picklable_strategies = {}
+
+    for name, fn in strategies.items():
+        # Check if it's a lambda or partial (not directly picklable in some cases)
+        if hasattr(fn, '__name__') and fn.__name__ != '<lambda>':
+            picklable_strategies[name] = fn
+        else:
+            non_picklable_strategies[name] = fn
+
+    all_results = {}
+
+    # Run picklable strategies in parallel (if any)
+    if picklable_strategies and num_workers > 1:
+        # Actually, passing precomputed dict to processes is expensive
+        # Better to use ThreadPoolExecutor for this workload (CPU-bound but GIL-releasing numpy)
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {
+                executor.submit(evaluate_strategy, None, fn, precomputed): name
+                for name, fn in picklable_strategies.items()
+            }
+            for future in futures:
+                name = futures[future]
+                all_results[name] = future.result()
+
+    # Run non-picklable (lambda) strategies - also parallel with threads
+    if non_picklable_strategies:
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {
+                executor.submit(evaluate_strategy, None, fn, precomputed): name
+                for name, fn in non_picklable_strategies.items()
+            }
+            for future in futures:
+                name = futures[future]
+                all_results[name] = future.result()
+
+    return all_results
+
+
+def _load_single_pickle(filename: Path) -> tuple:
+    """Load a single pickle file. Returns (qid, data) or (None, None) on error."""
+    try:
+        if 'stats' in filename.name or 'comparison' in filename.name:
+            return None, None
         with open(filename, 'rb') as f:
             data = pickle.load(f)
         qid = data.get('qid')
-        if qid is not None:
-            results_by_qid[qid].append(data)
+        return qid, data
+    except Exception as e:
+        print(f"Warning: Failed to load {filename}: {e}")
+        return None, None
+
+
+def load_results(results_dir: str, num_workers: int = None) -> dict:
+    """Load all result pickle files in parallel."""
+    pkl_files = list(Path(results_dir).glob("*.pkl"))
+    print(f"Found {len(pkl_files)} pickle files, loading...")
+
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), len(pkl_files))
+
+    results_by_qid = defaultdict(list)
+
+    # Parallel loading with ThreadPoolExecutor (I/O bound)
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        results = executor.map(_load_single_pickle, pkl_files)
+
+        for qid, data in results:
+            if qid is not None:
+                results_by_qid[qid].append(data)
+
     return dict(results_by_qid)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--results_dir', type=str, default='/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results')
+    parser.add_argument('--parallel', type=int, default=None, help='Number of parallel workers (default: CPU count)')
+    parser.add_argument('--no-parallel', action='store_true', help='Disable parallel evaluation')
     args = parser.parse_args()
 
+    import time
+    start_time = time.time()
+
+    # Determine parallelism
+    num_workers = 1 if args.no_parallel else (args.parallel or mp.cpu_count())
+    print(f"Using {num_workers} workers")
+
     print(f"Loading results from {args.results_dir}...")
-    results_by_qid = load_results(args.results_dir)
-    print(f"Found {len(results_by_qid)} questions\n")
+    results_by_qid = load_results(args.results_dir, num_workers=num_workers)
+    print(f"Found {len(results_by_qid)} questions")
+
+    # Precompute trace data (done once, reused by all strategies)
+    print("Precomputing trace data...")
+    precomputed = precompute_trace_data(results_by_qid)
+    total_traces = sum(len(d['traces']) for d in precomputed.values())
+    print(f"Precomputed {total_traces} traces across {len(precomputed)} questions")
+
+    load_time = time.time() - start_time
+    print(f"Loading + precompute took {load_time:.2f}s\n")
 
     print("=" * 70)
     print("WEIGHTING STRATEGY COMPARISON")
     print("=" * 70)
+
+    eval_start = time.time()
+
+    if num_workers > 1:
+        # Parallel evaluation
+        print(f"Evaluating {len(WEIGHTING_STRATEGIES)} strategies in parallel...")
+        all_results = evaluate_all_strategies_parallel(precomputed, WEIGHTING_STRATEGIES, num_workers)
+    else:
+        # Sequential evaluation
+        all_results = {}
+        for name, weight_fn in WEIGHTING_STRATEGIES.items():
+            result = evaluate_strategy(None, weight_fn, precomputed)
+            all_results[name] = result
+
+    eval_time = time.time() - eval_start
+    print(f"Evaluation took {eval_time:.2f}s\n")
+
+    # Print results sorted by accuracy
     print(f"{'Strategy':<20} {'Correct':<10} {'Total':<10} {'Accuracy':<10}")
     print("-" * 70)
 
-    all_results = {}
-
-    for name, weight_fn in WEIGHTING_STRATEGIES.items():
-        result = evaluate_strategy(results_by_qid, weight_fn)
-        all_results[name] = result
+    sorted_results = sorted(all_results.items(), key=lambda x: -x[1]['accuracy'])
+    for name, result in sorted_results:
         print(f"{name:<20} {result['correct']:<10} {result['total']:<10} {100*result['accuracy']:.1f}%")
 
     # Find best strategy
-    best = max(all_results.items(), key=lambda x: x[1]['accuracy'])
+    best_name, best_result = sorted_results[0]
     print("-" * 70)
-    print(f"Best strategy: {best[0]} ({100*best[1]['accuracy']:.1f}%)")
+    print(f"Best strategy: {best_name} ({100*best_result['accuracy']:.1f}%)")
+
+    total_time = time.time() - start_time
+    print(f"\nTotal time: {total_time:.2f}s")
 
     # Save detailed results
     output_file = os.path.join(args.results_dir, 'weighting_comparison.pkl')
     with open(output_file, 'wb') as f:
         pickle.dump(all_results, f)
-    print(f"\nDetailed results saved to {output_file}")
+    print(f"Detailed results saved to {output_file}")
 
     # Show per-question comparison for top strategies
     print("\n" + "=" * 70)
@@ -576,7 +852,7 @@ def main():
     print("=" * 70)
 
     uniform_res = all_results['uniform']['per_question']
-    best_res = best[1]['per_question']
+    best_res = best_result['per_question']
 
     print(f"{'QID':<5} {'GT':<10} {'Uniform':<15} {'Best':<15}")
     print("-" * 70)
