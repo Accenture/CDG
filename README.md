@@ -48,7 +48,7 @@ python scripts/run_offline_single.py --qid 0 --budget 256
 
 # Analyze results
 python analysis/compute_upper_bound.py --results_dir offline_results/run001/
-python analysis/custom_weighting.py --results_dir offline_results/run001/
+python analysis/custom_weighting.py --results_dir offline_results/run001/ --no-parallel
 ```
 
 ## Output Structure
