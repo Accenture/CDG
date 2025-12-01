@@ -15,5 +15,6 @@ dependencies:
     - torch
     - transformers
     - datasets
-    - dynasor
     - accelerate
+    # dynasor for math evaluation (from hao-ai-lab, NOT PyPI)
+    - git+https://github.com/hao-ai-lab/Dynasor.git

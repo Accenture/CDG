@@ -1,4 +1,25 @@
-  git submodule update --init --recursive
+## Getting Started
+
+```bash
+# Clone the repo
+git clone <repo-url>
+cd sampling_credit
+
+# Initialize submodules (pulls deepconf dependency)
+git submodule update --init --recursive
+```
+
+This repo uses [deepconf](https://github.com/facebookresearch/deepconf) as a git submodule for the core LLM wrapper and confidence computation utilities.
+
+## Dependencies
+
+**Important**: The `dynasor` package for math evaluation must be installed from GitHub (NOT PyPI):
+
+```bash
+# The PyPI 'dynasor' is a different package (molecular dynamics)!
+# Install the correct one from hao-ai-lab:
+pip install git+https://github.com/hao-ai-lab/Dynasor.git
+```
 
 ## Paths (Azure VM)
 
