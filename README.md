@@ -61,6 +61,55 @@ python analysis/custom_weighting.py --results_dir offline_results/run001/ --no-p
     └── ...
 ```
 
+### Data Structure (per-question pickle file)
+
+```python
+{
+    # Metadata
+    'question': str,           # The math problem
+    'ground_truth': str,       # Correct answer
+    'qid': int,                # Question ID
+    'run_id': str,             # Run identifier
+
+    # Results
+    'all_traces': list[256],   # All 256 generated traces
+    'total_tokens': int,       # Total tokens across all traces
+    'total_traces_count': int, # 256
+
+    # Voting
+    'voting_results': {
+        'majority': ...,
+        'mean_confidence_weighted': ...,
+        'tail_confidence_weighted': ...,
+        'bottom_window_weighted': ...,
+        'min_window_weighted': ...,
+    },
+    'voted_answer': str,
+    'final_answer': str,
+
+    # Config
+    'config': {'model', 'mode', 'budget', 'window_size', 'temperature'},
+}
+```
+
+### Trace Structure (`all_traces[i]`)
+
+```python
+{
+    'stop_reason': str,        # 'stop' or 'length'
+    'text': str,               # Full reasoning text (can be very long)
+    'token_ids': list[N],      # Token IDs (N = num_tokens)
+    'num_tokens': int,         # e.g., 7587
+    'confs': list[N],          # Per-token confidence (same length as token_ids)
+    'extracted_answer': str,   # Parsed answer from \boxed{}
+
+    # Future: attention metrics (when attention capture is enabled)
+    # 'attention_received': list[N],   # Forking signal
+    # 'self_attention': list[N],       # Self-reliance
+    # 'attention_entropy': list[N],    # Decision spread
+}
+```
+
 ## Analyze Results
 
 ### Upper Bound (Oracle Accuracy)
