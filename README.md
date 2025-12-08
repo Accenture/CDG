@@ -153,6 +153,63 @@ python analysis/custom_weighting.py --results_dir offline_results/run001/ --no-p
 - High confidence tokens → y = x (reward)
 - Low confidence tokens → y = 1/x (penalize)
 
+### Forking Token Analysis
+
+Analyze the relationship between "forking tokens" (uncertainty markers like "but", "however", "perhaps") and model confidence. Reference: https://arxiv.org/pdf/2506.01939
+
+```bash
+# Run all analyses (convert to JSON + Exp 1 + Exp 2)
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --all
+
+# Individual experiments:
+
+# Convert pickle files to human-readable JSON
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --convert_to_json
+
+# Exp 1: Analyze entropy of forking vs non-forking tokens
+# Outputs: histograms (token-level + sample-level) and t-tests
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --exp1
+
+# Exp 1 with custom window size for sample-level analysis
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --exp1 --window_size 100
+
+# Exp 2: Brute force search for optimal sampling threshold (0-15, step 0.1)
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --exp2
+
+# Exp 2 with custom range
+python analysis/forking_token_analysis.py --results_dir offline_results/run001/ --exp2 --threshold_start 0 --threshold_end 20 --threshold_step 0.05
+```
+
+**Exp 1 Output**:
+- Token-level: Mean confidence of forking tokens vs non-forking tokens
+- Sample-level: Per-trace average confidence of forking vs non-forking tokens
+- Window-level: Confidence of windows around forking tokens vs other regions
+- Statistical t-tests at all three levels
+- Histograms: `exp1_histograms.png`
+
+**Exp 2 Output**:
+- Accuracy at each threshold value
+- Best threshold and accuracy
+- Plot: `exp2_threshold_plot.png`
+
+**Forking Tokens** (from paper word cloud, by importance tier):
+- Tier 1: since, thus, suppose, perhaps, actually, define, which, assume, also, given, wait, maybe, let, what, however
+- Tier 2: using, express, specific, denote, unless, consider, earlier, just, the, that, we, it
+- Tier 3: going, solving, recall, calculate, re, note, now, how, but, because, yes
+- Tier 4: if, when, therefore, might, hence, alternatively, or, etc.
+
+### Save Results as JSON
+
+You can also save inference results as human-readable JSON files:
+
+```bash
+# Save both pickle and JSON during inference
+python scripts/run_offline_batch.py --budget 256 --save_json
+
+# Save only JSON (no pickle files)
+python scripts/run_offline_batch.py --budget 256 --json_only
+```
+
 ## Attention Capture (Experimental) Minghao doesn't understand this part yet !!
 
 To get real attention weights from the last transformer layer:
