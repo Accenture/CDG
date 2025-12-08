@@ -12,11 +12,17 @@ Usage:
     # Run subset of questions
     python scripts/run_offline_batch.py --budget 256 --qid_start 0 --qid_end 10
 
+    # Save as human-readable JSON (in addition to pickle)
+    python scripts/run_offline_batch.py --budget 256 --save_json
+
+    # Save only JSON (no pickle files)
+    python scripts/run_offline_batch.py --budget 256 --json_only
+
 Output directory structure:
     {output_dir}/
     └── {rid}/
-        ├── qid0_{timestamp}.pkl
-        ├── qid1_{timestamp}.pkl
+        ├── qid0_{timestamp}.pkl   (unless --json_only)
+        ├── qid0_{timestamp}.json  (if --save_json or --json_only)
         └── ...
 """
 import sys
@@ -33,11 +39,87 @@ import json
 import pickle
 import argparse
 import re
+import numpy as np
 from datetime import datetime
 from tqdm import tqdm
+from collections import defaultdict
 from vllm import SamplingParams
 from deepconf import DeepThinkLLM
 from deepconf.utils import process_batch_results_offline, compute_all_voting_results
+
+
+def trace_to_json_serializable(trace: dict) -> dict:
+    """Convert trace dict to JSON-serializable format."""
+    result = {}
+    for key, value in trace.items():
+        if key == 'token_ids':
+            result[key] = [int(t) for t in value] if value else []
+        elif key == 'confs':
+            result[key] = [round(float(c), 4) for c in value] if value else []
+        elif key == 'text':
+            if len(value) > 5000:
+                result[key] = value[:2500] + "\n... [TRUNCATED] ...\n" + value[-2500:]
+                result['text_truncated'] = True
+                result['text_full_length'] = len(value)
+            else:
+                result[key] = value
+        elif isinstance(value, np.ndarray):
+            result[key] = value.tolist()
+        elif isinstance(value, (np.int64, np.int32)):
+            result[key] = int(value)
+        elif isinstance(value, (np.float64, np.float32)):
+            result[key] = float(value)
+        else:
+            result[key] = value
+    return result
+
+
+def save_result_as_json(result_data: dict, output_path: str) -> None:
+    """Save result data as human-readable JSON file (summarized format)."""
+    traces = result_data.get('all_traces', [])
+
+    # Build trace summaries
+    trace_summaries = []
+    for i, trace in enumerate(traces):
+        confs = trace.get('confs', [])
+        summary = {
+            'trace_index': i,
+            'extracted_answer': trace.get('extracted_answer', None),
+            'num_tokens': trace.get('num_tokens', 0),
+            'stop_reason': trace.get('stop_reason', ''),
+            'mean_confidence': round(float(np.mean(confs)), 4) if confs else None,
+            'min_confidence': round(float(min(confs)), 4) if confs else None,
+            'max_confidence': round(float(max(confs)), 4) if confs else None,
+        }
+        trace_summaries.append(summary)
+
+    # Answer distribution
+    answer_counts = defaultdict(int)
+    for trace in traces:
+        ans = trace.get('extracted_answer')
+        if ans:
+            answer_counts[str(ans)] += 1
+
+    json_data = {
+        'metadata': {
+            'question': result_data.get('question', ''),
+            'ground_truth': result_data.get('ground_truth', ''),
+            'qid': result_data.get('qid', -1),
+            'run_id': result_data.get('run_id', ''),
+            'total_tokens': result_data.get('total_tokens', 0),
+            'total_traces_count': result_data.get('total_traces_count', 0),
+            'voted_answer': result_data.get('voted_answer', ''),
+            'final_answer': result_data.get('final_answer', ''),
+            'saved_at': datetime.now().isoformat(),
+        },
+        'config': result_data.get('config', {}),
+        'voting_results': result_data.get('voting_results', {}),
+        'trace_summaries': trace_summaries,
+        'answer_distribution': dict(sorted(answer_counts.items(), key=lambda x: -x[1])[:20]),
+    }
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
 
 
 def get_next_run_id(output_dir: str) -> str:
@@ -96,6 +178,10 @@ def main():
                         help="GPU memory utilization (0.0-1.0)")
     parser.add_argument('--output_dir', type=str,
                         default="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
+    parser.add_argument('--save_json', action='store_true',
+                        help="Also save results as human-readable JSON files")
+    parser.add_argument('--json_only', action='store_true',
+                        help="Save only JSON files (no pickle)")
 
     args = parser.parse_args()
 
@@ -227,12 +313,19 @@ def main():
             result_data['voted_answer'] = voting_results['majority']['answer']
             result_data['final_answer'] = voting_results['majority']['answer']
 
-        # Save
-        result_filename = f"{run_dir}/qid{qid}_{timestamp}.pkl"
-        with open(result_filename, 'wb') as f:
-            pickle.dump(result_data, f)
+        # Save pickle (unless json_only)
+        if not args.json_only:
+            result_filename = f"{run_dir}/qid{qid}_{timestamp}.pkl"
+            with open(result_filename, 'wb') as f:
+                pickle.dump(result_data, f)
 
-    print(f"\nAll results saved to {run_dir}/")
+        # Save JSON (if requested or json_only)
+        if args.save_json or args.json_only:
+            json_filename = f"{run_dir}/qid{qid}_{timestamp}.json"
+            save_result_as_json(result_data, json_filename)
+
+    save_format = "JSON only" if args.json_only else ("pickle + JSON" if args.save_json else "pickle")
+    print(f"\nAll results saved to {run_dir}/ ({save_format})")
     print(f"Total generation time: {generation_time:.2f}s")
     print(f"Average time per question: {generation_time / num_questions:.2f}s")
 
