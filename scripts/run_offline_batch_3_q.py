@@ -25,8 +25,8 @@ import sys
 import os
 
 # Set HuggingFace cache to large disk
-os.environ["HF_HOME"] = "/eph/nvme0/model_confs/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/eph/nvme0/model_confs/hf_cache"
+os.environ["HF_HOME"] = "/mnt/model_confs/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = "/mnt/model_confs/hf_cache"
 
 # Add deepconf to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
@@ -199,6 +199,8 @@ def main():
     parser.add_argument('--model_type', type=str, default="deepseek")
     parser.add_argument('--temperature', type=float, default=0.6)
     parser.add_argument('--top_p', type=float, default=0.95)
+    parser.add_argument('--top_k', type=int, default=-1,
+                        help="Top-k sampling parameter (-1 for disabled, per vLLM default)")
     parser.add_argument('--max_num_seqs', type=int, default=64,
                         help="Maximum number of concurrent sequences (limits memory usage)")
     parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
@@ -259,6 +261,8 @@ def main():
     logger.info(f"Budget per question: {args.budget}")
     logger.info(f"Prompts per chunk: {chunk_size * args.budget}")
     logger.info(f"Temperature: {args.temperature}")
+    logger.info(f"Top-p: {args.top_p}")
+    logger.info(f"Top-k: {args.top_k}")
     logger.info(f"Max tokens: {args.max_tokens}")
     logger.info(f"Tensor parallel size: {args.tensor_parallel_size}")
     logger.info("="*80)
@@ -317,6 +321,7 @@ def main():
                 n=1,
                 temperature=args.temperature,
                 top_p=args.top_p,
+                top_k=args.top_k,
                 max_tokens=args.max_tokens,
                 logprobs=20,
                 seed=base_seed + i
@@ -393,6 +398,7 @@ def main():
                     'window_size': args.window_size,
                     'temperature': args.temperature,
                     'top_p': args.top_p,
+                    'top_k': args.top_k,
                 }
             }
 

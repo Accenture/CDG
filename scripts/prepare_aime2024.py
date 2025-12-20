@@ -2,15 +2,28 @@
 Prepare AIME 2024 dataset in JSONL format for deepconf experiments.
 """
 import json
-from datasets import load_dataset
+import os
+from datasets import load_dataset, concatenate_datasets
 
 def main():
-    # Load dataset
-    print("Loading AIME 2024 dataset...")
-    dataset = load_dataset("MathArena/aime_2024", split="train")
+    # Load both AIME 2024 datasets from MathArena
+    print("Loading AIME 2024 I dataset...")
+    dataset_i = load_dataset("MathArena/aime_2024_I", split="train")
+    print("Loading AIME 2024 II dataset...")
+    dataset_ii = load_dataset("MathArena/aime_2024_II", split="train")
+
+    print(f"Loaded {len(dataset_i)} questions from AIME I")
+    print(f"Loaded {len(dataset_ii)} questions from AIME II")
+
+    # Combine both datasets
+    dataset = concatenate_datasets([dataset_i, dataset_ii])
+    print(f"Total questions: {len(dataset)}")
 
     # Convert to JSONL
-    output_file = "aime_2024.jsonl"
+    output_dir = "/mnt/aime_2024"
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "aime_2024.jsonl")
+
     with open(output_file, "w", encoding="utf-8") as f:
         for example in dataset:
             entry = {

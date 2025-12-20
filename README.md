@@ -206,7 +206,7 @@ chmod +x scripts/run_hmmt_3q.sh
 ./scripts/run_hmmt_3q.sh
 ```
 
-### Important!!!!!!!! Script Parameters and system prompt
+### Important!!!!!!!! Script Parameters and system prompt and pahts to HF_HOME and TRANSFORMERS_CACHE. Read paper Table 11 to make sure you use the correct setups! If you don't specify top-p, the defualt is top-p = 0.95 already. If you don't specify top-k, the defualt is that top-k = -1, meaning top-k is disabled.  Otherwise, speify these values to the right values in paper. 
 
 The inference script uses these parameters:
 - `--dataset`: Path to HMMT JSONL file
@@ -216,15 +216,19 @@ The inference script uses these parameters:
 - `--temperature`: Sampling temperature (0.6)
 - `--model`: Model name (deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)
 - `--tensor_parallel_size`: Number of GPUs (8)
-- `--chunk_size`: Questions per batch (3)
+- `--chunk_size`: Save how often Questions per batch (3)
+- '--top_k': top-k value for vllm
+- '--top_p' : top-p value for vllm
 
-Read Table 11 in paper, use those paramters, Make sure to add the top-k parameters to the Qwen model and GPT-OSS-20B/120B models. and change --max_tokens for each model.
+Read Table 11 in paper, use those paramters, Make sure to add the top-k parameters to the Qwen model and GPT-OSS-20B/120B models. and change --max_tokens for each model. You DO NOT need to change run_offline_batch_3_q.py to modify these paramters . Just change your run.sh file to change paramters. 
 
 For system prompt: read below from paper under Table 11:
 Prompt templates: For Qwen3 and GPT-OSS, we append the same instruction to every problem
 prompt: “Please reason step by step, and put your final answer within \boxed{}.” For GPT-OSS, we additionally keep the provider’s official system prompt and enable the reasoning effort = high setting. For DeepSeek-8B, we use the official system prompt and put the problem in the user message.
 
-### Output Location
+Important!!!!! Remember to adjust your HF_HOME and TRANSFORMERS_CACHE at the beginning of run_offline_batch_3_q.py
+
+### Output Location and give permission to your output folders!!!!!!!!!!! Make sure your folder exist!
 
 Results are saved to:
 ```
