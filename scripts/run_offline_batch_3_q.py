@@ -24,9 +24,12 @@ Output directory structure:
 import sys
 import os
 
-# Set HuggingFace cache to large disk
-os.environ["HF_HOME"] = "/mnt/model_confs/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/mnt/model_confs/hf_cache"
+# Add scripts to path for config import
+sys.path.insert(0, os.path.dirname(__file__))
+from config import PathConfig
+
+# Set HuggingFace cache to large disk (using centralized config)
+PathConfig.setup_hf_env()
 
 # Add deepconf to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
@@ -172,6 +175,10 @@ def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> st
             {"role": "system", "content": "该助手为DeepSeek-R1，由深度求索公司创造。\n今天是2025年5月28日，星期一。\n"},
             {"role": "user", "content": question}
         ]
+    elif model_type == "qwen":
+        # Qwen3: append instruction to question (per paper Table 11)
+        question_with_instruction = question + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
+        messages = [{"role": "user", "content": question_with_instruction}]
     else:
         messages = [{"role": "user", "content": question}]
 
@@ -206,7 +213,7 @@ def main():
     parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
                         help="GPU memory utilization (0.0-1.0)")
     parser.add_argument('--output_dir', type=str,
-                        default="/eph/nvme0/hmmt_feb_2025_run_512_results")
+                        default=PathConfig.OUTPUT_BASE)
     parser.add_argument('--save_json', action='store_true',
                         help="Also save results as human-readable JSON files")
     parser.add_argument('--json_only', action='store_true',

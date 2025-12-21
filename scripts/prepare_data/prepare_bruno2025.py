@@ -4,23 +4,33 @@ Prepare Bruno 2025 dataset in JSONL format for deepconf experiments.
 Bruno 2025 is a mathematics competition dataset from MathArena.
 """
 import json
-from datasets import load_dataset
+import os
+import sys
 from pathlib import Path
+
+# Add scripts to path for config import (parent folder contains config.py)
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import DatasetConfig
+
+from datasets import load_dataset
 
 
 def main():
+    # Get dataset config
+    ds_config = DatasetConfig.DATASETS["bruno_2025"]
+
     # Load dataset
     print("Loading Bruno 2025 dataset...")
-    dataset = load_dataset("MathArena/brumo_2025", split="train")
+    dataset = load_dataset(ds_config["hf_id"], split=ds_config["split"])
 
     print(f"Loaded {len(dataset)} problems")
 
     # Create output directory
-    output_dir = Path("/mnt/bruno_2025")
+    output_dir = Path(ds_config["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Convert to JSONL
-    output_file = output_dir / "bruno_2025.jsonl"
+    output_file = output_dir / ds_config["filename"]
     with open(output_file, "w", encoding="utf-8") as f:
         for example in dataset:
             entry = {

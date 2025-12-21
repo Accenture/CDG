@@ -33,9 +33,12 @@ Output directory structure:
 import sys
 import os
 
-# Set HuggingFace cache to large disk
-os.environ["HF_HOME"] = "/mnt/dev/model_ckpt/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/mnt/dev/model_ckpt/hf_cache"
+# Add scripts to path for config import
+sys.path.insert(0, os.path.dirname(__file__))
+from config import PathConfig
+
+# Set HuggingFace cache to large disk (using centralized config)
+PathConfig.setup_hf_env()
 
 # Add deepconf to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
@@ -95,7 +98,7 @@ def main():
     parser.add_argument('--model_type', type=str, default="deepseek")
     parser.add_argument('--temperature', type=float, default=0.6)
     parser.add_argument('--top_p', type=float, default=0.95)
-    parser.add_argument('--output_dir', type=str, default="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
+    parser.add_argument('--output_dir', type=str, default=PathConfig.OUTPUT_BASE)
 
     args = parser.parse_args()
 

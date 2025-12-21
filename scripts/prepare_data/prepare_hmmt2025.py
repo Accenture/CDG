@@ -5,23 +5,33 @@ HMMT (Harvard-MIT Mathematics Tournament) February 2025 contains 30 competition 
 covering Algebra, Combinatorics, Geometry, and Number Theory.
 """
 import json
-from datasets import load_dataset
+import os
+import sys
 from pathlib import Path
+
+# Add scripts to path for config import (parent folder contains config.py)
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import DatasetConfig
+
+from datasets import load_dataset
 
 
 def main():
+    # Get dataset config
+    ds_config = DatasetConfig.DATASETS["hmmt_2025"]
+
     # Load dataset
     print("Loading HMMT February 2025 dataset...")
-    dataset = load_dataset("MathArena/hmmt_feb_2025", split="train")
+    dataset = load_dataset(ds_config["hf_id"], split=ds_config["split"])
 
     print(f"Loaded {len(dataset)} problems")
 
     # Create output directory
-    output_dir = Path("/eph/nvme0/hmmt_feb_2025")
+    output_dir = Path(ds_config["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Convert to JSONL
-    output_file = output_dir / "hmmt_feb_2025.jsonl"
+    output_file = output_dir / ds_config["filename"]
     with open(output_file, "w", encoding="utf-8") as f:
         for example in dataset:
             entry = {

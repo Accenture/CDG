@@ -28,9 +28,12 @@ Output directory structure:
 import sys
 import os
 
-# Set HuggingFace cache to large disk
-os.environ["HF_HOME"] = "/mnt/dev/model_ckpt/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/mnt/dev/model_ckpt/hf_cache"
+# Add scripts to path for config import
+sys.path.insert(0, os.path.dirname(__file__))
+from config import PathConfig
+
+# Set HuggingFace cache to large disk (using centralized config)
+PathConfig.setup_hf_env()
 
 # Add deepconf to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
@@ -177,7 +180,7 @@ def main():
     parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
                         help="GPU memory utilization (0.0-1.0)")
     parser.add_argument('--output_dir', type=str,
-                        default="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
+                        default=PathConfig.OUTPUT_BASE)
     parser.add_argument('--save_json', action='store_true',
                         help="Also save results as human-readable JSON files")
     parser.add_argument('--json_only', action='store_true',
