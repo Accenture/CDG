@@ -28,11 +28,8 @@ class PathConfig:
     # BASE DIRECTORIES
     # ============================================================
 
-    # Base directory for datasets (JSONL files)
-    DATASETS_BASE = "/mnt/dev/datasets"
-
-    # Base directory for model checkpoints and HuggingFace cache
-    MODEL_CACHE_BASE = "/mnt/dev/model_ckpt"
+    # Base directory for datasets (JSONL files) - use fast NVMe
+    DATASETS_BASE = "/eph/nvme0/datasets"
 
     # Base directory for inference results output
     OUTPUT_BASE = "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results"
@@ -41,8 +38,8 @@ class PathConfig:
     # HUGGINGFACE CACHE PATHS
     # ============================================================
 
-    # HuggingFace home directory (for model downloads)
-    HF_CACHE = os.path.join(MODEL_CACHE_BASE, "hf_cache")
+    # HuggingFace home directory (for model downloads) - use NVMe (27TB free, faster)
+    HF_CACHE = "/eph/nvme0/hf_cache"
 
     # Transformers cache (usually same as HF_CACHE)
     TRANSFORMERS_CACHE = HF_CACHE
@@ -72,7 +69,6 @@ class PathConfig:
         """Create all necessary directories if they don't exist."""
         dirs = [
             cls.DATASETS_BASE,
-            cls.MODEL_CACHE_BASE,
             cls.HF_CACHE,
             cls.OUTPUT_BASE,
             cls.AIME_2025_DIR,
@@ -209,7 +205,6 @@ def print_shell_exports():
     """Print shell export commands for use in bash scripts."""
     print("# Add these to your shell script or source this output")
     print(f'export DATASETS_BASE="{PathConfig.DATASETS_BASE}"')
-    print(f'export MODEL_CACHE_BASE="{PathConfig.MODEL_CACHE_BASE}"')
     print(f'export OUTPUT_BASE="{PathConfig.OUTPUT_BASE}"')
     print(f'export HF_CACHE="{PathConfig.HF_CACHE}"')
     print()

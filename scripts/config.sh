@@ -9,11 +9,8 @@
 # BASE DIRECTORIES
 # ============================================================
 
-# Base directory for datasets (JSONL files)
-export DATASETS_BASE="/mnt/dev/datasets"
-
-# Base directory for model checkpoints and HuggingFace cache
-export MODEL_CACHE_BASE="/mnt/dev/model_ckpt"
+# Base directory for datasets (JSONL files) - use fast NVMe
+export DATASETS_BASE="/eph/nvme0/datasets"
 
 # Base directory for inference results output
 export OUTPUT_BASE="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results"
@@ -22,7 +19,8 @@ export OUTPUT_BASE="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-comp
 # HUGGINGFACE CACHE PATHS
 # ============================================================
 
-export HF_HOME="${MODEL_CACHE_BASE}/hf_cache"
+# HuggingFace cache - use NVMe (27TB free, faster)
+export HF_HOME="/eph/nvme0/hf_cache"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 
 # ============================================================
@@ -71,7 +69,6 @@ print_config() {
     echo "Configuration Settings"
     echo "========================================"
     echo "DATASETS_BASE: ${DATASETS_BASE}"
-    echo "MODEL_CACHE_BASE: ${MODEL_CACHE_BASE}"
     echo "OUTPUT_BASE: ${OUTPUT_BASE}"
     echo "HF_HOME: ${HF_HOME}"
     echo "========================================"
