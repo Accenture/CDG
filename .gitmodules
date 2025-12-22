@@ -1,3 +1,6 @@
 [submodule "deepconf"]
 	path = deepconf
 	url = https://github.com/facebookresearch/deepconf.git
+[submodule "gpt-oss"]
+	path = gpt-oss
+	url = https://github.com/openai/gpt-oss.git

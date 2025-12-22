@@ -52,6 +52,24 @@ export DEEPSEEK8B_TOP_P="0.95"
 export DEEPSEEK8B_TOP_K="-1"
 export DEEPSEEK8B_MAX_TOKENS="64000"
 
+# GPT-OSS-20B settings (per DeepConf paper Table 11)
+export GPTOSS20B_MODEL="openai/gpt-oss-20b"
+export GPTOSS20B_MODEL_TYPE="gpt-oss"
+export GPTOSS20B_TEMPERATURE="1.0"
+export GPTOSS20B_TOP_P="1.0"
+export GPTOSS20B_TOP_K="40"
+export GPTOSS20B_MAX_TOKENS="130000"
+export GPTOSS20B_REASONING_EFFORT="high"
+
+# GPT-OSS-120B settings (per DeepConf paper Table 11)
+export GPTOSS120B_MODEL="openai/gpt-oss-120b"
+export GPTOSS120B_MODEL_TYPE="gpt-oss"
+export GPTOSS120B_TEMPERATURE="1.0"
+export GPTOSS120B_TOP_P="1.0"
+export GPTOSS120B_TOP_K="40"
+export GPTOSS120B_MAX_TOKENS="130000"
+export GPTOSS120B_REASONING_EFFORT="high"
+
 # ============================================================
 # DEFAULT INFERENCE SETTINGS
 # ============================================================

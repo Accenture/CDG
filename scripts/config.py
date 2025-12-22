@@ -167,20 +167,22 @@ class ModelConfig:
             "max_tokens": 32000,
         },
         "gpt-oss-20b": {
-            "hf_id": "GPT-OSS-20B",  # placeholder
+            "hf_id": "openai/gpt-oss-20b",
             "model_type": "gpt-oss",
             "temperature": 1.0,
             "top_p": 1.0,
             "top_k": 40,
             "max_tokens": 130000,
+            "reasoning_effort": "high",
         },
         "gpt-oss-120b": {
-            "hf_id": "GPT-OSS-120B",  # placeholder
+            "hf_id": "openai/gpt-oss-120b",
             "model_type": "gpt-oss",
             "temperature": 1.0,
             "top_p": 1.0,
             "top_k": 40,
             "max_tokens": 130000,
+            "reasoning_effort": "high",
         },
     }
 
