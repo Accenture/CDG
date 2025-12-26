@@ -50,6 +50,7 @@ import numpy as np
 from datetime import datetime
 from collections import defaultdict
 from vllm import LLM, SamplingParams
+from vllm.inputs import TokensPrompt
 from deepconf.utils import compute_all_voting_results
 import logging
 
@@ -462,9 +463,10 @@ def main():
         logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         generation_start = time_module.time()
 
-        # GPT-OSS uses prompt_token_ids instead of text prompts
+        # GPT-OSS uses TokensPrompt for pre-tokenized inputs (vLLM 0.10.x API)
+        token_prompts = [TokensPrompt(prompt_token_ids=ids) for ids in chunk_prompt_ids]
         vllm_outputs = llm.generate(
-            prompt_token_ids=chunk_prompt_ids,
+            prompts=token_prompts,
             sampling_params=sampling_params_list,
         )
 
