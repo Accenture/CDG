@@ -316,10 +316,12 @@ def main():
                         help="Reasoning effort level (low, medium, high)")
     parser.add_argument('--max_num_seqs', type=int, default=64,
                         help="Maximum number of concurrent sequences")
-    parser.add_argument('--gpu_memory_utilization', type=float, default=0.95,
+    parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
                         help="GPU memory utilization (0.0-1.0)")
     parser.add_argument('--max_model_len', type=int, default=130000,
                         help="Maximum model context length")
+    parser.add_argument('--enforce_eager', action='store_true',
+                        help="Disable CUDA graphs to reduce memory usage during initialization")
     parser.add_argument('--output_dir', type=str, default=PathConfig.OUTPUT_BASE)
     parser.add_argument('--save_json', action='store_true',
                         help="Also save results as human-readable JSON files")
@@ -398,6 +400,7 @@ def main():
         max_num_seqs=args.max_num_seqs,
         max_model_len=args.max_model_len,
         enable_prefix_caching=True,
+        enforce_eager=args.enforce_eager,
     )
     logger.info("Model initialized successfully")
 

@@ -32,7 +32,8 @@ python scripts/run_gpt_oss_batch.py \
     --model "${GPTOSS120B_MODEL}" \
     --tensor_parallel_size "${DEFAULT_TENSOR_PARALLEL_SIZE}" \
     --chunk_size "${DEFAULT_CHUNK_SIZE}" \
-    --output_dir "${OUTPUT_BASE}"
+    --output_dir "${OUTPUT_BASE}" \
+    --enforce_eager
 
 echo "========================================="
 echo "AIME 2024 completed!"
