@@ -63,7 +63,15 @@ from openai_harmony import (
     Role,
     SystemContent,
     DeveloperContent,
+    ReasoningEffort,
 )
+
+# Map string reasoning effort to enum (per gpt-oss/gpt_oss/chat.py)
+REASONING_EFFORT_MAP = {
+    "high": ReasoningEffort.HIGH,
+    "medium": ReasoningEffort.MEDIUM,
+    "low": ReasoningEffort.LOW,
+}
 
 
 def extract_answer_from_text(text: str) -> str:
@@ -109,17 +117,19 @@ def process_gpt_oss_outputs(vllm_outputs, encoding, window_size: int = 2048) -> 
             extracted_answer = extract_answer_from_text(text)
 
             # Compute confidence scores from logprobs if available
+            # Use same format as deepconf/utils.py:compute_confidence()
+            # Returns -mean_logprob (negative log probability), where lower = more confident
             confs = []
             if completion.logprobs:
                 for logprob_entry in completion.logprobs:
                     if logprob_entry:
-                        # Get the probability of the chosen token
-                        top_logprob = list(logprob_entry.values())[0].logprob if logprob_entry else 0
-                        conf = np.exp(top_logprob)
+                        # Take mean of all top-k logprobs (matching deepconf format)
+                        mean_logprob = np.mean([lp.logprob for lp in logprob_entry.values()])
+                        conf = round(-mean_logprob, 3)
                         confs.append(float(conf))
 
-            # Compute min confidence over windows
-            min_conf = 1.0
+            # Compute min confidence over windows (lowest -logprob = most confident)
+            min_conf = float('inf')
             if len(confs) >= window_size:
                 for i in range(len(confs) - window_size + 1):
                     window_conf = np.mean(confs[i:i+window_size])
@@ -278,9 +288,13 @@ def prepare_prompt_token_ids(question: str, encoding, reasoning_effort: str = "h
 
     # Create conversation with Harmony format
     # SystemContent.new() includes the default system prompt
-    system_content = SystemContent.new()
+    # Set reasoning effort on SystemContent (per gpt-oss/gpt_oss/chat.py)
+    system_content = (
+        SystemContent.new()
+        .with_reasoning_effort(REASONING_EFFORT_MAP[reasoning_effort])
+    )
 
-    # Set reasoning effort via developer content
+    # Developer content with instructions
     developer_content = DeveloperContent.new().with_instructions(instruction)
 
     # Build conversation
