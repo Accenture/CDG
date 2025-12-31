@@ -15,7 +15,7 @@ echo "========================================="
 echo ""
 
 # Run inference with chunking
-python scripts/run_offline_batch_3_q.py \
+python scripts/run_vllm_batch.py \
     --dataset /eph/nvme0/hmmt_feb_2025/hmmt_feb_2025.jsonl \
     --budget 512 \
     --rid hmmt2025run3qdeepseek8b \

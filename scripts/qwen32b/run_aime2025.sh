@@ -26,7 +26,7 @@ if [[ "${QWEN32B_ENABLE_THINKING}" == "true" ]]; then
     THINKING_FLAG="--enable_thinking"
 fi
 
-python scripts/run_offline_batch_3_q.py \
+python scripts/run_vllm_batch.py \
     --dataset "${DATASET_AIME_2025}" \
     --budget "${DEFAULT_BUDGET}" \
     --rid qwen32b_aime2025_512 \

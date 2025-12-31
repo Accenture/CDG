@@ -76,7 +76,7 @@ export GPTOSS120B_REASONING_EFFORT="high"
 # ============================================================
 
 export DEFAULT_BUDGET="512"
-export DEFAULT_CHUNK_SIZE="3"
+export DEFAULT_CHUNK_SIZE="1"
 export DEFAULT_TENSOR_PARALLEL_SIZE="8"
 
 # ============================================================

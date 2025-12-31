@@ -59,7 +59,7 @@ cd /path/to/sampling_credit
 
 1. **Special vLLM version**: GPT-OSS requires `vllm==0.10.1+gptoss` instead of standard vLLM
 2. **Harmony format**: Uses `openai-harmony` for prompt formatting instead of HuggingFace tokenizers
-3. **Different inference script**: Uses `run_gpt_oss_batch.py` instead of `run_offline_batch_3_q.py`
+3. **Different inference script**: Uses `run_gpt_oss_batch.py` instead of `run_vllm_batch.py`
 4. **Higher temperature**: Uses temp=1.0 (vs 0.6 for Qwen/DeepSeek)
 
 ## Hardware

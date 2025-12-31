@@ -19,7 +19,7 @@ echo "Dataset: ${DATASET_AIME_2024}"
 echo "Output: ${OUTPUT_BASE}"
 echo "========================================="
 
-python scripts/run_offline_batch_3_q.py \
+python scripts/run_vllm_batch.py \
     --dataset "${DATASET_AIME_2024}" \
     --budget "${DEFAULT_BUDGET}" \
     --rid deepseek8b_aime2024_512 \

@@ -141,6 +141,21 @@ def get_next_run_id(output_dir: str) -> str:
     return f"run{next_num:03d}"
 
 
+def get_completed_qids(run_dir: str) -> set:
+    """Scan run directory for completed qid files and return set of completed qids."""
+    completed = set()
+    if not os.path.exists(run_dir):
+        return completed
+
+    for filename in os.listdir(run_dir):
+        # Match both pickle and json files: qid{N}_{timestamp}.pkl or .json
+        match = re.match(r'^qid(\d+)_\d+\.(pkl|json)$', filename)
+        if match:
+            completed.add(int(match.group(1)))
+
+    return completed
+
+
 def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> str:
     """Prepare prompt for a single question"""
     if model_type == "deepseek":
@@ -185,6 +200,8 @@ def main():
                         help="Also save results as human-readable JSON files")
     parser.add_argument('--json_only', action='store_true',
                         help="Save only JSON files (no pickle)")
+    parser.add_argument('--no_resume', action='store_true',
+                        help="Disable auto-resume (reprocess all questions even if completed)")
 
     args = parser.parse_args()
 
@@ -208,6 +225,21 @@ def main():
     qid_end = min(qid_end, len(data))
 
     questions_to_process = list(range(qid_start, qid_end))
+
+    # Resume: skip already completed questions
+    if not args.no_resume:
+        completed_qids = get_completed_qids(run_dir)
+        if completed_qids:
+            original_count = len(questions_to_process)
+            questions_to_process = [qid for qid in questions_to_process if qid not in completed_qids]
+            skipped_count = original_count - len(questions_to_process)
+            if skipped_count > 0:
+                print(f"RESUME: Found {len(completed_qids)} completed questions in {run_dir}")
+                print(f"RESUME: Skipping {skipped_count} already completed questions: {sorted(completed_qids)}")
+            if not questions_to_process:
+                print("All questions already completed! Nothing to do.")
+                return
+
     num_questions = len(questions_to_process)
 
     print(f"Processing questions {qid_start} to {qid_end-1} ({num_questions} questions)")
