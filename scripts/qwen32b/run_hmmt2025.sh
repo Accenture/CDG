@@ -15,9 +15,16 @@ echo "Temperature: ${QWEN32B_TEMPERATURE}"
 echo "Top-p: ${QWEN32B_TOP_P}"
 echo "Top-k: ${QWEN32B_TOP_K}"
 echo "Max tokens: ${QWEN32B_MAX_TOKENS}"
+echo "Enable thinking: ${QWEN32B_ENABLE_THINKING}"
 echo "Dataset: ${DATASET_HMMT_2025}"
 echo "Output: ${OUTPUT_BASE}"
 echo "========================================="
+
+# Build enable_thinking flag
+THINKING_FLAG=""
+if [[ "${QWEN32B_ENABLE_THINKING}" == "true" ]]; then
+    THINKING_FLAG="--enable_thinking"
+fi
 
 python scripts/run_offline_batch_3_q.py \
     --dataset "${DATASET_HMMT_2025}" \
@@ -30,7 +37,8 @@ python scripts/run_offline_batch_3_q.py \
     --model_type "${QWEN32B_MODEL_TYPE}" \
     --tensor_parallel_size "${DEFAULT_TENSOR_PARALLEL_SIZE}" \
     --chunk_size "${DEFAULT_CHUNK_SIZE}" \
-    --output_dir "${OUTPUT_BASE}"
+    --output_dir "${OUTPUT_BASE}" \
+    ${THINKING_FLAG}
 
 echo "========================================="
 echo "HMMT 2025 completed!"

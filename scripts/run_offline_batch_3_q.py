@@ -168,7 +168,7 @@ def setup_logging(log_dir: str) -> logging.Logger:
     return logger
 
 
-def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> str:
+def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek", enable_thinking: bool = False) -> str:
     """Prepare prompt for a single question"""
     if model_type == "deepseek":
         messages = [
@@ -182,11 +182,17 @@ def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek") -> st
     else:
         messages = [{"role": "user", "content": question}]
 
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
+    # Build chat template kwargs
+    template_kwargs = {
+        "tokenize": False,
+        "add_generation_prompt": True,
+    }
+
+    # Enable thinking mode for Qwen3 models if requested
+    if model_type == "qwen" and enable_thinking:
+        template_kwargs["enable_thinking"] = True
+
+    return tokenizer.apply_chat_template(messages, **template_kwargs)
 
 
 def main():
@@ -220,6 +226,8 @@ def main():
                         help="Save only JSON files (no pickle)")
     parser.add_argument('--chunk_size', type=int, default=3,
                         help="Number of questions to process per chunk (reduces memory usage)")
+    parser.add_argument('--enable_thinking', action='store_true',
+                        help="Enable thinking mode for Qwen3 models")
 
     args = parser.parse_args()
 
@@ -271,6 +279,7 @@ def main():
     logger.info(f"Top-p: {args.top_p}")
     logger.info(f"Top-k: {args.top_k}")
     logger.info(f"Max tokens: {args.max_tokens}")
+    logger.info(f"Enable thinking: {args.enable_thinking}")
     logger.info(f"Tensor parallel size: {args.tensor_parallel_size}")
     logger.info("="*80)
 
@@ -311,7 +320,7 @@ def main():
 
         for qid in chunk_qids:
             question = data[qid]['question']
-            prompt = prepare_prompt(question, deep_llm.tokenizer, args.model_type)
+            prompt = prepare_prompt(question, deep_llm.tokenizer, args.model_type, args.enable_thinking)
 
             for _ in range(args.budget):
                 chunk_prompts.append(prompt)
@@ -406,6 +415,7 @@ def main():
                     'temperature': args.temperature,
                     'top_p': args.top_p,
                     'top_k': args.top_k,
+                    'enable_thinking': args.enable_thinking,
                 }
             }
 

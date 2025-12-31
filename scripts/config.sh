@@ -43,6 +43,7 @@ export QWEN32B_TEMPERATURE="0.6"
 export QWEN32B_TOP_P="0.95"
 export QWEN32B_TOP_K="20"
 export QWEN32B_MAX_TOKENS="32000"
+export QWEN32B_ENABLE_THINKING="true"
 
 # DeepSeek-8B settings
 export DEEPSEEK8B_MODEL="deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
