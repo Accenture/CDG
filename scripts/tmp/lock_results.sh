@@ -38,7 +38,8 @@ case $MODE in
         echo ""
 
         # Make all files read-only (remove write for user, group, others)
-        find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" -o -name "*.log" \) -exec chmod a-w {} \;
+        # Exclude .log files so inference can continue appending
+        find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" \) -exec chmod a-w {} \;
 
         # Make directories read-only too (prevents file creation/deletion inside)
         find "$RESULTS_DIR" -mindepth 1 -type d -exec chmod a-w {} \;
@@ -54,7 +55,7 @@ case $MODE in
         echo ""
 
         # Restore write permissions for user
-        find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" -o -name "*.log" \) -exec chmod u+w {} \;
+        find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" \) -exec chmod u+w {} \;
         find "$RESULTS_DIR" -mindepth 1 -type d -exec chmod u+w {} \;
 
         echo "Done! Files are now writable."
@@ -64,9 +65,9 @@ case $MODE in
         echo "Checking protection status..."
         echo ""
 
-        # Count protected vs unprotected
-        total_files=$(find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" -o -name "*.log" \) | wc -l)
-        protected_files=$(find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" -o -name "*.log" \) ! -perm -u=w | wc -l)
+        # Count protected vs unprotected (excludes .log files)
+        total_files=$(find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" \) | wc -l)
+        protected_files=$(find "$RESULTS_DIR" -type f \( -name "*.pkl" -o -name "*.json" \) ! -perm -u=w | wc -l)
 
         total_dirs=$(find "$RESULTS_DIR" -mindepth 1 -type d | wc -l)
         protected_dirs=$(find "$RESULTS_DIR" -mindepth 1 -type d ! -perm -u=w | wc -l)
