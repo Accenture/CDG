@@ -40,7 +40,8 @@ def get_completed_qids(run_dir: str) -> set:
 
     for filename in os.listdir(run_dir):
         # Match both pickle and json files: qid{N}_{timestamp}.pkl or .json
-        match = re.match(r'^qid(\d+)_\d+\.(pkl|json)$', filename)
+        # Timestamp format is YYYYMMDD_HHMMSS (two underscore-separated parts)
+        match = re.match(r'^qid(\d+)_\d+_\d+\.(pkl|json)$', filename)
         if match:
             completed.add(int(match.group(1)))
 
