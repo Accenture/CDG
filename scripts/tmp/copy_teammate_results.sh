@@ -38,44 +38,86 @@ echo "Mode: $(if $DRY_RUN; then echo 'DRY-RUN (use --run to execute)'; else echo
 echo "========================================"
 echo ""
 
+# ===========================================
+# PHASE 1: Pre-flight check - detect conflicts
+# ===========================================
+echo "Phase 1: Checking for conflicts..."
+echo ""
+
+CONFLICTS=()
+VALID_COPIES=()
+
 for src_subdir in "${!MAPPINGS[@]}"; do
     target_name="${MAPPINGS[$src_subdir]}"
     src_path="$SRC_BASE/$src_subdir"
     target_path="$TARGET_DIR/$target_name"
 
-    echo "----------------------------------------"
-    echo "Source:  $src_path"
-    echo "Target:  $target_path"
-
     # Check if source exists
     if [[ ! -d "$src_path" ]]; then
-        echo "  [SKIP] Source directory not found"
+        echo "  [SKIP] $target_name - source not found"
         continue
     fi
-
-    # Count files
-    pkl_count=$(ls -1 "$src_path"/*.pkl 2>/dev/null | wc -l)
-    echo "  Found $pkl_count pickle files"
 
     # Check if target already exists
     if [[ -d "$target_path" ]]; then
         existing_count=$(ls -1 "$target_path"/*.pkl 2>/dev/null | wc -l)
-        echo "  [WARN] Target exists with $existing_count files"
-        if $DRY_RUN; then
-            echo "  [DRY-RUN] Would skip (target exists)"
-        else
-            echo "  [SKIP] Target already exists"
-        fi
-        continue
+        echo "  [CONFLICT] $target_name - target exists with $existing_count files"
+        CONFLICTS+=("$target_name")
+    else
+        pkl_count=$(ls -1 "$src_path"/*.pkl 2>/dev/null | wc -l)
+        echo "  [OK] $target_name - $pkl_count files ready to copy"
+        VALID_COPIES+=("$src_subdir")
     fi
+done
 
-    # Copy
+echo ""
+
+# If any conflicts, abort entirely
+if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
+    echo "========================================"
+    echo "ABORTING: ${#CONFLICTS[@]} conflict(s) detected!"
+    echo "========================================"
+    echo "The following targets already exist:"
+    for conflict in "${CONFLICTS[@]}"; do
+        echo "  - $TARGET_DIR/$conflict"
+    done
+    echo ""
+    echo "No files were copied. Remove existing directories or rename them first."
+    echo "========================================"
+    exit 1
+fi
+
+# If nothing to copy
+if [[ ${#VALID_COPIES[@]} -eq 0 ]]; then
+    echo "========================================"
+    echo "Nothing to copy (no valid sources found)"
+    echo "========================================"
+    exit 0
+fi
+
+# ===========================================
+# PHASE 2: Execute copies (no conflicts)
+# ===========================================
+echo "Phase 2: Copying ${#VALID_COPIES[@]} directories..."
+echo ""
+
+for src_subdir in "${VALID_COPIES[@]}"; do
+    target_name="${MAPPINGS[$src_subdir]}"
+    src_path="$SRC_BASE/$src_subdir"
+    target_path="$TARGET_DIR/$target_name"
+    pkl_count=$(ls -1 "$src_path"/*.pkl 2>/dev/null | wc -l)
+
+    echo "----------------------------------------"
+    echo "Source:  $src_path"
+    echo "Target:  $target_path"
+    echo "Files:   $pkl_count"
+
     if $DRY_RUN; then
-        echo "  [DRY-RUN] Would copy $pkl_count files to $target_path"
+        echo "  [DRY-RUN] Would copy"
     else
         echo "  Copying..."
         cp -r "$src_path" "$target_path"
-        echo "  [DONE] Copied to $target_path"
+        echo "  [DONE]"
     fi
 done
 
