@@ -67,6 +67,10 @@ def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek", enabl
         # Gemma 3: append CoT instruction (non-reasoning baseline)
         question_with_instruction = question + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
         messages = [{"role": "user", "content": question_with_instruction}]
+    elif model_type == "qwq":
+        # QwQ-32B: reasoning model based on Qwen2.5, uses standard chat template
+        question_with_instruction = question + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
+        messages = [{"role": "user", "content": question_with_instruction}]
     else:
         messages = [{"role": "user", "content": question}]
 

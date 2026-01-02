@@ -21,28 +21,32 @@ from pathlib import Path
 class PathConfig:
     """
     Central configuration for all file system paths.
-    Modify these values when running on different machines.
+
+    Values are read from environment variables (set by config.sh).
+    Defaults are provided as fallback.
+
+    To change paths, modify config.sh (the single source of truth).
     """
 
     # ============================================================
-    # BASE DIRECTORIES
+    # BASE DIRECTORIES (read from env vars set by config.sh)
     # ============================================================
 
     # Base directory for datasets (JSONL files) - use fast NVMe
-    DATASETS_BASE = "/eph/nvme0/datasets"
+    DATASETS_BASE = os.environ.get("DATASETS_BASE", "/eph/nvme0/datasets")
 
     # Base directory for inference results output
-    OUTPUT_BASE = "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results"
+    OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
 
     # ============================================================
     # HUGGINGFACE CACHE PATHS
     # ============================================================
 
     # HuggingFace home directory (for model downloads) - use NVMe (27TB free, faster)
-    HF_CACHE = "/eph/nvme0/hf_cache"
+    HF_CACHE = os.environ.get("HF_HOME", "/eph/nvme0/hf_cache")
 
     # Transformers cache (usually same as HF_CACHE)
-    TRANSFORMERS_CACHE = HF_CACHE
+    TRANSFORMERS_CACHE = os.environ.get("TRANSFORMERS_CACHE", HF_CACHE)
 
     # ============================================================
     # DATASET DIRECTORIES
@@ -183,6 +187,30 @@ class ModelConfig:
             "top_k": 40,
             "max_tokens": 130000,
             "reasoning_effort": "high",
+        },
+        "qwq-32b": {
+            "hf_id": "Qwen/QwQ-32B",
+            "model_type": "qwq",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "top_k": 20,
+            "max_tokens": 32768,
+        },
+        "qwen25-32b": {
+            "hf_id": "Qwen/Qwen2.5-32B",
+            "model_type": "qwen",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "top_k": 20,
+            "max_tokens": 8192,
+        },
+        "deepseek-r1-llama-70b": {
+            "hf_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+            "model_type": "deepseek",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "top_k": -1,
+            "max_tokens": 32768,
         },
     }
 

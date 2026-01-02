@@ -79,6 +79,30 @@ export GEMMA3_27B_TOP_P="0.95"
 export GEMMA3_27B_TOP_K="40"
 export GEMMA3_27B_MAX_TOKENS="8192"  # Gemma 3 output limit
 
+# QwQ-32B settings (reasoning model based on Qwen2.5)
+export QWQ32B_MODEL="Qwen/QwQ-32B"
+export QWQ32B_MODEL_TYPE="qwq"
+export QWQ32B_TEMPERATURE="0.6"
+export QWQ32B_TOP_P="0.95"
+export QWQ32B_TOP_K="20"
+export QWQ32B_MAX_TOKENS="32768"
+
+# Qwen2.5-32B settings (base model)
+export QWEN25_32B_MODEL="Qwen/Qwen2.5-32B"
+export QWEN25_32B_MODEL_TYPE="qwen"
+export QWEN25_32B_TEMPERATURE="0.6"
+export QWEN25_32B_TOP_P="0.95"
+export QWEN25_32B_TOP_K="20"
+export QWEN25_32B_MAX_TOKENS="8192"
+
+# DeepSeek-R1-Distill-Llama-70B settings (reasoning model distilled from R1)
+export DEEPSEEK_R1_LLAMA_70B_MODEL="deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+export DEEPSEEK_R1_LLAMA_70B_MODEL_TYPE="deepseek"
+export DEEPSEEK_R1_LLAMA_70B_TEMPERATURE="0.6"
+export DEEPSEEK_R1_LLAMA_70B_TOP_P="0.95"
+export DEEPSEEK_R1_LLAMA_70B_TOP_K="-1"
+export DEEPSEEK_R1_LLAMA_70B_MAX_TOKENS="32768"
+
 # ============================================================
 # DEFAULT INFERENCE SETTINGS
 # ============================================================
