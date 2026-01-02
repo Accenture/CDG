@@ -71,6 +71,14 @@ export GPTOSS120B_TOP_K="40"
 export GPTOSS120B_MAX_TOKENS="130000"
 export GPTOSS120B_REASONING_EFFORT="high"
 
+# Gemma 3-27B settings (non-reasoning baseline)
+export GEMMA3_27B_MODEL="google/gemma-3-27b-it"
+export GEMMA3_27B_MODEL_TYPE="gemma"
+export GEMMA3_27B_TEMPERATURE="0.6"
+export GEMMA3_27B_TOP_P="0.95"
+export GEMMA3_27B_TOP_K="40"
+export GEMMA3_27B_MAX_TOKENS="8192"  # Gemma 3 output limit
+
 # ============================================================
 # DEFAULT INFERENCE SETTINGS
 # ============================================================
@@ -78,6 +86,7 @@ export GPTOSS120B_REASONING_EFFORT="high"
 export DEFAULT_BUDGET="512"
 export DEFAULT_CHUNK_SIZE="1"
 export DEFAULT_TENSOR_PARALLEL_SIZE="8"
+export DEFAULT_LOGPROBS="20"  # Number of top logprobs to return per token
 
 # ============================================================
 # HELPER FUNCTION

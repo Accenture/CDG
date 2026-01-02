@@ -37,6 +37,7 @@ python scripts/run_vllm_batch.py \
     --model_type "${QWEN32B_MODEL_TYPE}" \
     --tensor_parallel_size "${DEFAULT_TENSOR_PARALLEL_SIZE}" \
     --chunk_size "${DEFAULT_CHUNK_SIZE}" \
+    --logprobs "${DEFAULT_LOGPROBS}" \
     --output_dir "${OUTPUT_BASE}" \
     ${THINKING_FLAG}
 

@@ -214,6 +214,8 @@ def main():
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--top_p', type=float, default=1.0)
     parser.add_argument('--top_k', type=int, default=40)
+    parser.add_argument('--logprobs', type=int, default=20,
+                        help="Number of top logprobs to return per token")
     parser.add_argument('--reasoning_effort', type=str, default="high",
                         help="Reasoning effort level (low, medium, high)")
     parser.add_argument('--max_num_seqs', type=int, default=64,
@@ -298,6 +300,7 @@ def main():
     logger.info(f"Temperature: {args.temperature}")
     logger.info(f"Top-p: {args.top_p}")
     logger.info(f"Top-k: {args.top_k}")
+    logger.info(f"Logprobs: {args.logprobs}")
     logger.info(f"Max tokens: {args.max_tokens}")
     logger.info(f"Reasoning effort: {args.reasoning_effort}")
     logger.info(f"Tensor parallel size: {args.tensor_parallel_size}")
@@ -361,7 +364,7 @@ def main():
                 top_p=args.top_p,
                 top_k=args.top_k,
                 max_tokens=args.max_tokens,
-                logprobs=20,
+                logprobs=args.logprobs,
                 seed=base_seed + i,
                 stop_token_ids=stop_token_ids,
             )
@@ -421,6 +424,10 @@ def main():
             logger.info(f"Processing {len(qid_outputs)} traces...")
             processed = process_gpt_oss_outputs(qid_outputs, encoding, args.window_size)
 
+            # Compute truncation stats (traces that hit max_tokens limit)
+            truncated_count = sum(1 for t in processed['traces'] if t.get('stop_reason') == 'length')
+            truncation_rate = truncated_count / len(processed['traces']) if processed['traces'] else 0
+
             # Compute voting results
             voting_results = compute_all_voting_results(processed['traces'])
 
@@ -433,6 +440,8 @@ def main():
                 'all_traces': processed['traces'],
                 'total_tokens': processed['total_tokens'],
                 'total_traces_count': len(processed['traces']),
+                'truncated_count': truncated_count,
+                'truncation_rate': truncation_rate,
                 'voting_results': voting_results,
                 'config': {
                     'model': args.model,
@@ -443,6 +452,8 @@ def main():
                     'temperature': args.temperature,
                     'top_p': args.top_p,
                     'top_k': args.top_k,
+                    'logprobs': args.logprobs,
+                    'max_tokens': args.max_tokens,
                     'reasoning_effort': args.reasoning_effort,
                 }
             }
@@ -457,6 +468,8 @@ def main():
             logger.info(f"Voted answer: {voted_answer}")
             logger.info(f"Total tokens: {processed['total_tokens']:,}")
             logger.info(f"Valid traces: {len(processed['traces'])}")
+            if truncated_count > 0:
+                logger.warning(f"⚠️ Truncated traces: {truncated_count}/{len(processed['traces'])} ({truncation_rate:.1%})")
 
             # Save pickle (unless json_only)
             if not args.json_only:

@@ -112,11 +112,13 @@ def save_result_as_json(result_data: dict, output_path: str) -> None:
     trace_summaries = []
     for i, trace in enumerate(traces):
         confs = trace.get('confs', [])
+        stop_reason = trace.get('stop_reason', '')
         summary = {
             'trace_index': i,
             'extracted_answer': trace.get('extracted_answer', None),
             'num_tokens': trace.get('num_tokens', 0),
-            'stop_reason': trace.get('stop_reason', ''),
+            'stop_reason': stop_reason,
+            'is_truncated': stop_reason == 'length',
             'mean_confidence': round(float(np.mean(confs)), 4) if confs else None,
             'min_confidence': round(float(min(confs)), 4) if confs else None,
             'max_confidence': round(float(max(confs)), 4) if confs else None,
@@ -130,6 +132,11 @@ def save_result_as_json(result_data: dict, output_path: str) -> None:
         if ans:
             answer_counts[str(ans)] += 1
 
+    # Compute truncation stats from trace summaries
+    truncated_count = sum(1 for t in trace_summaries if t.get('stop_reason') == 'length')
+    total_traces = len(trace_summaries)
+    truncation_rate = truncated_count / total_traces if total_traces > 0 else 0
+
     json_data = {
         'metadata': {
             'question': result_data.get('question', ''),
@@ -138,6 +145,8 @@ def save_result_as_json(result_data: dict, output_path: str) -> None:
             'run_id': result_data.get('run_id', ''),
             'total_tokens': result_data.get('total_tokens', 0),
             'total_traces_count': result_data.get('total_traces_count', 0),
+            'truncated_count': result_data.get('truncated_count', truncated_count),
+            'truncation_rate': round(result_data.get('truncation_rate', truncation_rate), 4),
             'voted_answer': result_data.get('voted_answer', ''),
             'final_answer': result_data.get('final_answer', ''),
             'saved_at': datetime.now().isoformat(),

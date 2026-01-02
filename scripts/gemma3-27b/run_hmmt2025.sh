@@ -1,6 +1,6 @@
 #!/bin/bash
-# HMMT February 2025 Inference - DeepSeek-R1-0528-Qwen3-8B (512 traces)
-# Settings per DeepConf paper Table 11
+# HMMT Feb 2025 Inference - Gemma 3-27B (512 traces)
+# Non-reasoning baseline for confidence pattern comparison
 
 set -e
 
@@ -9,12 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
 echo "========================================="
-echo "DeepSeek-R1-8B - HMMT 2025 (512 traces)"
+echo "Gemma 3-27B - HMMT 2025 (512 traces)"
 echo "========================================="
-echo "Temperature: ${DEEPSEEK8B_TEMPERATURE}"
-echo "Top-p: ${DEEPSEEK8B_TOP_P}"
-echo "Top-k: ${DEEPSEEK8B_TOP_K}"
-echo "Max tokens: ${DEEPSEEK8B_MAX_TOKENS}"
+echo "Temperature: ${GEMMA3_27B_TEMPERATURE}"
+echo "Top-p: ${GEMMA3_27B_TOP_P}"
+echo "Top-k: ${GEMMA3_27B_TOP_K}"
+echo "Max tokens: ${GEMMA3_27B_MAX_TOKENS}"
 echo "Dataset: ${DATASET_HMMT_2025}"
 echo "Output: ${OUTPUT_BASE}"
 echo "========================================="
@@ -22,13 +22,13 @@ echo "========================================="
 python scripts/run_vllm_batch.py \
     --dataset "${DATASET_HMMT_2025}" \
     --budget "${DEFAULT_BUDGET}" \
-    --rid deepseek8b_hmmt2025_512 \
-    --max_tokens "${DEEPSEEK8B_MAX_TOKENS}" \
-    --temperature "${DEEPSEEK8B_TEMPERATURE}" \
-    --top_p "${DEEPSEEK8B_TOP_P}" \
-    --top_k "${DEEPSEEK8B_TOP_K}" \
-    --model "${DEEPSEEK8B_MODEL}" \
-    --model_type "${DEEPSEEK8B_MODEL_TYPE}" \
+    --rid gemma3_27b_hmmt2025_512 \
+    --max_tokens "${GEMMA3_27B_MAX_TOKENS}" \
+    --temperature "${GEMMA3_27B_TEMPERATURE}" \
+    --top_p "${GEMMA3_27B_TOP_P}" \
+    --top_k "${GEMMA3_27B_TOP_K}" \
+    --model "${GEMMA3_27B_MODEL}" \
+    --model_type "${GEMMA3_27B_MODEL_TYPE}" \
     --tensor_parallel_size "${DEFAULT_TENSOR_PARALLEL_SIZE}" \
     --chunk_size "${DEFAULT_CHUNK_SIZE}" \
     --logprobs "${DEFAULT_LOGPROBS}" \

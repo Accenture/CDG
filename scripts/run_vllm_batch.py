@@ -63,6 +63,10 @@ def prepare_prompt(question: str, tokenizer, model_type: str = "deepseek", enabl
         # Qwen3: append instruction to question (per paper Table 11)
         question_with_instruction = question + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
         messages = [{"role": "user", "content": question_with_instruction}]
+    elif model_type == "gemma":
+        # Gemma 3: append CoT instruction (non-reasoning baseline)
+        question_with_instruction = question + "\n\nPlease reason step by step, and put your final answer within \\boxed{}."
+        messages = [{"role": "user", "content": question_with_instruction}]
     else:
         messages = [{"role": "user", "content": question}]
 
@@ -98,6 +102,8 @@ def main():
     parser.add_argument('--top_p', type=float, default=0.95)
     parser.add_argument('--top_k', type=int, default=-1,
                         help="Top-k sampling parameter (-1 for disabled, per vLLM default)")
+    parser.add_argument('--logprobs', type=int, default=20,
+                        help="Number of top logprobs to return per token")
     parser.add_argument('--max_num_seqs', type=int, default=64,
                         help="Maximum number of concurrent sequences (limits memory usage)")
     parser.add_argument('--gpu_memory_utilization', type=float, default=0.90,
@@ -173,6 +179,7 @@ def main():
     logger.info(f"Temperature: {args.temperature}")
     logger.info(f"Top-p: {args.top_p}")
     logger.info(f"Top-k: {args.top_k}")
+    logger.info(f"Logprobs: {args.logprobs}")
     logger.info(f"Max tokens: {args.max_tokens}")
     logger.info(f"Enable thinking: {args.enable_thinking}")
     logger.info(f"Tensor parallel size: {args.tensor_parallel_size}")
@@ -234,7 +241,7 @@ def main():
                 top_p=args.top_p,
                 top_k=args.top_k,
                 max_tokens=args.max_tokens,
-                logprobs=20,
+                logprobs=args.logprobs,
                 seed=base_seed + i
             )
             sampling_params_list.append(sp)
@@ -288,6 +295,10 @@ def main():
             logger.info(f"Processing {len(qid_outputs)} traces...")
             processed = process_batch_results_offline(qid_outputs, args.window_size)
 
+            # Compute truncation stats (traces that hit max_tokens limit)
+            truncated_count = sum(1 for t in processed['traces'] if t.get('stop_reason') == 'length')
+            truncation_rate = truncated_count / len(processed['traces']) if processed['traces'] else 0
+
             # Compute voting results
             voting_results = compute_all_voting_results(processed['traces'])
 
@@ -300,6 +311,8 @@ def main():
                 'all_traces': processed['traces'],
                 'total_tokens': processed['total_tokens'],
                 'total_traces_count': len(processed['traces']),
+                'truncated_count': truncated_count,
+                'truncation_rate': truncation_rate,
                 'voting_results': voting_results,
                 'config': {
                     'model': args.model,
@@ -310,6 +323,8 @@ def main():
                     'temperature': args.temperature,
                     'top_p': args.top_p,
                     'top_k': args.top_k,
+                    'logprobs': args.logprobs,
+                    'max_tokens': args.max_tokens,
                     'enable_thinking': args.enable_thinking,
                 }
             }
@@ -324,6 +339,8 @@ def main():
             logger.info(f"Voted answer: {voted_answer}")
             logger.info(f"Total tokens: {processed['total_tokens']:,}")
             logger.info(f"Valid traces: {len(processed['traces'])}")
+            if truncated_count > 0:
+                logger.warning(f"⚠️ Truncated traces: {truncated_count}/{len(processed['traces'])} ({truncation_rate:.1%})")
 
             # Save pickle (unless json_only)
             if not args.json_only:
