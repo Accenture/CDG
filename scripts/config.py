@@ -212,6 +212,7 @@ class ModelConfig:
             "top_k": -1,
             "max_tokens": 32768,
         },
+        # Gemma? Or config.sh? merge? 
     }
 
     @classmethod
