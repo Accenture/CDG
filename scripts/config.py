@@ -1,15 +1,15 @@
 """
-Centralized configuration for all paths and settings.
+Centralized configuration for paths and dataset settings.
 
-This config file consolidates all hardcoded paths used across the codebase.
-Modify this file to change paths when running on different machines.
+Model configurations are defined in config.sh (single source of truth).
+This file provides Python access to paths and dataset metadata.
 
 Usage:
-    from config import PathConfig, ModelConfig, DatasetConfig
+    from config import PathConfig, DatasetConfig
 
     # Access paths
     hf_cache = PathConfig.HF_CACHE
-    output_dir = PathConfig.OUTPUT_DIR
+    output_dir = PathConfig.OUTPUT_BASE
 
     # Access dataset paths
     aime2025_path = DatasetConfig.get_dataset_path("aime_2025")
@@ -87,6 +87,7 @@ class PathConfig:
 class DatasetConfig:
     """
     Configuration for dataset paths and metadata.
+    Used by data preparation scripts (scripts/prepare_data/*.py).
     """
 
     # Dataset definitions: name -> (directory, filename, huggingface_id)
@@ -137,95 +138,6 @@ class DatasetConfig:
     def list_datasets(cls) -> list:
         """List all available dataset names."""
         return list(cls.DATASETS.keys())
-
-
-class ModelConfig:
-    """
-    Configuration for model settings per DeepConf paper Table 11.
-    """
-
-    # Model configurations: model_name -> settings
-    MODELS = {
-        "deepseek-8b": {
-            "hf_id": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
-            "model_type": "deepseek",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": -1,  # disabled
-            "max_tokens": 64000,
-        },
-        "qwen3-8b": {
-            "hf_id": "Qwen/Qwen3-8B",
-            "model_type": "qwen",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": 20,
-            "max_tokens": 32000,
-        },
-        "qwen3-32b": {
-            "hf_id": "Qwen/Qwen3-32B",
-            "model_type": "qwen",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": 20,
-            "max_tokens": 32000,
-        },
-        "gpt-oss-20b": {
-            "hf_id": "openai/gpt-oss-20b",
-            "model_type": "gpt-oss",
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "top_k": 40,
-            "max_tokens": 130000,
-            "reasoning_effort": "high",
-        },
-        "gpt-oss-120b": {
-            "hf_id": "openai/gpt-oss-120b",
-            "model_type": "gpt-oss",
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "top_k": 40,
-            "max_tokens": 130000,
-            "reasoning_effort": "high",
-        },
-        "qwq-32b": {
-            "hf_id": "Qwen/QwQ-32B",
-            "model_type": "qwq",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": 20,
-            "max_tokens": 32768,
-        },
-        "qwen25-32b": {
-            "hf_id": "Qwen/Qwen2.5-32B",
-            "model_type": "qwen",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": 20,
-            "max_tokens": 8192,
-        },
-        "deepseek-r1-llama-70b": {
-            "hf_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-            "model_type": "deepseek",
-            "temperature": 0.6,
-            "top_p": 0.95,
-            "top_k": -1,
-            "max_tokens": 32768,
-        },
-        # Gemma? Or config.sh? merge? 
-    }
-
-    @classmethod
-    def get_model_config(cls, model_name: str) -> dict:
-        """Get configuration for a specific model."""
-        if model_name not in cls.MODELS:
-            raise ValueError(f"Unknown model: {model_name}. Available: {list(cls.MODELS.keys())}")
-        return cls.MODELS[model_name].copy()
-
-    @classmethod
-    def list_models(cls) -> list:
-        """List all available model names."""
-        return list(cls.MODELS.keys())
 
 
 # ============================================================
