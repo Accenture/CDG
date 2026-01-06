@@ -1,0 +1,487 @@
+#!/usr/bin/env python3
+"""
+Evaluate subsampled trace experiments and generate scaling analysis.
+
+Evaluates runs at different trace counts (8, 16, 32, 64, 128, 256, 512)
+and produces:
+1. Table: Accuracy by trace count and method
+2. Figure: Accuracy vs trace count with methods as different colors/shapes
+
+Usage:
+    # Evaluate all subsampled runs and generate figure
+    python scripts/eval/eval_subsample.py
+
+    # Evaluate specific model/dataset
+    python scripts/eval/eval_subsample.py --model qwen32b --dataset aime2025
+
+    # Save figure to file
+    python scripts/eval/eval_subsample.py --output figure.png
+
+    # Custom results directory
+    python scripts/eval/eval_subsample.py --results_dir /path/to/results
+"""
+
+import os
+import sys
+import re
+import argparse
+from collections import defaultdict
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing as mp
+
+# Add paths for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from config import PathConfig
+from eval_methods import load_run_results, evaluate_with_method, get_available_methods, EVAL_METHODS
+
+# Try to import matplotlib (optional for figure generation)
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.markers as mmarkers
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
+    print("Warning: matplotlib not available. Figure generation disabled.")
+
+# Try to import numpy
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
+
+# Default paths
+DEFAULT_RESULTS_DIR = PathConfig.OUTPUT_BASE
+SUBSET_SUBDIR = "subset_trace"
+
+# Trace counts to analyze (including full 512)
+TRACE_COUNTS = [8, 16, 32, 64, 128, 256, 512]
+
+
+def parse_run_id(run_id: str) -> dict:
+    """
+    Parse run_id to extract model, dataset, budget, subset info.
+
+    Formats:
+        Full run: {model}_{dataset}_{budget}
+            e.g., qwen32b_aime2025_512
+        Subset run: {model}_{dataset}_{budget}_subset{size}v{version}
+            e.g., qwen32b_aime2025_512_subset32v1
+
+    Returns:
+        dict with model, dataset, budget, subset_size, version, is_subset
+    """
+    # Known datasets
+    datasets = ['aime2025', 'aime2024', 'hmmt2025', 'bruno2025']
+
+    result = {
+        'model': None,
+        'dataset': None,
+        'budget': None,
+        'subset_size': None,
+        'version': None,
+        'is_subset': False,
+        'run_id': run_id,
+    }
+
+    # Check for subset pattern
+    subset_match = re.search(r'_subset(\d+)v(\d+)$', run_id)
+    if subset_match:
+        result['subset_size'] = int(subset_match.group(1))
+        result['version'] = int(subset_match.group(2))
+        result['is_subset'] = True
+        # Remove subset suffix for base parsing
+        base_run_id = run_id[:subset_match.start()]
+    else:
+        base_run_id = run_id
+
+    # Parse base run_id
+    for dataset in datasets:
+        if f'_{dataset}_' in base_run_id:
+            parts = base_run_id.split(f'_{dataset}_')
+            if len(parts) == 2:
+                result['model'] = parts[0]
+                result['dataset'] = dataset
+                result['budget'] = parts[1]
+                break
+
+    return result
+
+
+def discover_runs(results_dir: str, subset_dir: str = None) -> dict:
+    """
+    Discover all runs including subsampled versions.
+
+    Returns:
+        dict: {
+            'full': [run_ids...],  # Full 512 trace runs
+            'subset': [run_ids...],  # Subsampled runs
+        }
+    """
+    runs = {'full': [], 'subset': []}
+    base = Path(results_dir)
+
+    if not base.exists():
+        return runs
+
+    # Find full runs in base directory
+    for item in base.iterdir():
+        if item.is_dir() and item.name not in ['subset_trace', '__pycache__']:
+            pkl_files = list(item.glob("*.pkl"))
+            if pkl_files:
+                runs['full'].append(item.name)
+
+    # Find subset runs
+    subset_base = base / (subset_dir or SUBSET_SUBDIR)
+    if subset_base.exists():
+        for item in subset_base.iterdir():
+            if item.is_dir():
+                pkl_files = list(item.glob("*.pkl"))
+                if pkl_files:
+                    runs['subset'].append(item.name)
+
+    return runs
+
+
+def evaluate_single_run(args: tuple) -> tuple:
+    """Worker function for parallel run evaluation."""
+    run_id, run_path, method = args
+    results_by_qid = load_run_results(run_path)
+
+    if not results_by_qid:
+        return run_id, method, None
+
+    result = evaluate_with_method(results_by_qid, method)
+    info = parse_run_id(run_id)
+
+    return run_id, method, {
+        'info': info,
+        'result': result,
+    }
+
+
+def evaluate_all_runs(results_dir: str, methods: list = None,
+                      model_filter: str = None, dataset_filter: str = None,
+                      num_workers: int = None) -> dict:
+    """
+    Evaluate all runs with specified methods.
+
+    Returns:
+        dict: {run_id: {method: result, ...}, ...}
+    """
+    if methods is None:
+        methods = get_available_methods()
+
+    runs = discover_runs(results_dir)
+    all_run_ids = runs['full'] + runs['subset']
+
+    # Apply filters
+    filtered_runs = []
+    for run_id in all_run_ids:
+        info = parse_run_id(run_id)
+        if model_filter and info['model'] != model_filter:
+            continue
+        if dataset_filter and info['dataset'] != dataset_filter:
+            continue
+        filtered_runs.append(run_id)
+
+    if not filtered_runs:
+        print(f"No runs found matching filters (model={model_filter}, dataset={dataset_filter})")
+        return {}
+
+    print(f"Found {len(filtered_runs)} runs to evaluate with {len(methods)} methods...")
+
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), len(filtered_runs) * len(methods), 16)
+
+    # Build task list
+    tasks = []
+    for run_id in filtered_runs:
+        info = parse_run_id(run_id)
+        if info['is_subset']:
+            run_path = os.path.join(results_dir, SUBSET_SUBDIR, run_id)
+        else:
+            run_path = os.path.join(results_dir, run_id)
+
+        for method in methods:
+            tasks.append((run_id, run_path, method))
+
+    # Run evaluations in parallel
+    all_results = defaultdict(dict)
+
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        results = executor.map(evaluate_single_run, tasks)
+        for run_id, method, data in results:
+            if data is not None:
+                all_results[run_id][method] = data
+
+    return dict(all_results)
+
+
+def aggregate_by_trace_count(all_results: dict) -> dict:
+    """
+    Aggregate results by (model, dataset, trace_count, method).
+
+    For subsampled runs, averages across versions.
+
+    Returns:
+        dict: {(model, dataset): {trace_count: {method: {'mean': x, 'std': x, 'values': [...]}}}}
+    """
+    # Group by (model, dataset, trace_count, method)
+    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+
+    for run_id, methods_results in all_results.items():
+        for method, data in methods_results.items():
+            info = data['info']
+            model = info['model']
+            dataset = info['dataset']
+            result = data['result']
+            accuracy = result['accuracy']
+
+            if info['is_subset']:
+                trace_count = info['subset_size']
+            else:
+                # Full run - use budget as trace count
+                try:
+                    trace_count = int(info['budget'])
+                except:
+                    trace_count = 512
+
+            grouped[(model, dataset)][trace_count][method].append(accuracy)
+
+    # Compute mean and std
+    aggregated = {}
+    for (model, dataset), trace_data in grouped.items():
+        aggregated[(model, dataset)] = {}
+        for trace_count, method_data in trace_data.items():
+            aggregated[(model, dataset)][trace_count] = {}
+            for method, values in method_data.items():
+                if HAS_NUMPY:
+                    mean_acc = np.mean(values)
+                    std_acc = np.std(values) if len(values) > 1 else 0
+                else:
+                    mean_acc = sum(values) / len(values)
+                    std_acc = 0
+                aggregated[(model, dataset)][trace_count][method] = {
+                    'mean': mean_acc,
+                    'std': std_acc,
+                    'values': values,
+                    'n': len(values),
+                }
+
+    return aggregated
+
+
+def print_table(aggregated: dict, methods: list):
+    """Print results as a formatted table."""
+    print("\n" + "=" * 100)
+    print("SUBSAMPLE EVALUATION RESULTS")
+    print("=" * 100)
+
+    for (model, dataset), trace_data in sorted(aggregated.items()):
+        print(f"\n{model} - {dataset}")
+        print("-" * 100)
+
+        # Header
+        header = f"{'Traces':<10}"
+        for method in methods:
+            method_name = EVAL_METHODS[method]['name']
+            header += f"{method_name:<20}"
+        print(header)
+        print("-" * 100)
+
+        # Rows
+        for trace_count in sorted(trace_data.keys()):
+            row = f"{trace_count:<10}"
+            for method in methods:
+                if method in trace_data[trace_count]:
+                    data = trace_data[trace_count][method]
+                    if data['n'] > 1:
+                        cell = f"{100*data['mean']:.1f}% (+/-{100*data['std']:.1f})"
+                    else:
+                        cell = f"{100*data['mean']:.1f}%"
+                else:
+                    cell = "-"
+                row += f"{cell:<20}"
+            print(row)
+
+        print("-" * 100)
+
+    print("=" * 100)
+
+
+def create_figure(aggregated: dict, methods: list, output_path: str = None,
+                  title: str = None, show: bool = True):
+    """
+    Create accuracy vs trace count figure.
+
+    X-axis: Trace count (8 -> 512)
+    Y-axis: Accuracy
+    Color/Shape: Methods
+    """
+    if not HAS_MATPLOTLIB:
+        print("Cannot create figure: matplotlib not available")
+        return
+
+    # Define colors and markers for methods
+    method_styles = {
+        'majority': {'color': 'blue', 'marker': 'o', 'linestyle': '-'},
+        'weighted': {'color': 'red', 'marker': 's', 'linestyle': '--'},
+        'confidence': {'color': 'green', 'marker': '^', 'linestyle': '-.'},
+    }
+
+    # Create figure with subplots for each (model, dataset) combination
+    n_plots = len(aggregated)
+    if n_plots == 0:
+        print("No data to plot")
+        return
+
+    # Determine grid size
+    n_cols = min(2, n_plots)
+    n_rows = (n_plots + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 5 * n_rows), squeeze=False)
+    axes = axes.flatten()
+
+    for idx, ((model, dataset), trace_data) in enumerate(sorted(aggregated.items())):
+        ax = axes[idx]
+
+        for method in methods:
+            style = method_styles.get(method, {'color': 'gray', 'marker': 'x', 'linestyle': ':'})
+            method_name = EVAL_METHODS[method]['name']
+
+            # Collect data points
+            x_vals = []
+            y_vals = []
+            y_errs = []
+
+            for trace_count in sorted(trace_data.keys()):
+                if method in trace_data[trace_count]:
+                    data = trace_data[trace_count][method]
+                    x_vals.append(trace_count)
+                    y_vals.append(100 * data['mean'])
+                    y_errs.append(100 * data['std'])
+
+            if x_vals:
+                ax.errorbar(x_vals, y_vals, yerr=y_errs if any(y_errs) else None,
+                           label=method_name,
+                           color=style['color'],
+                           marker=style['marker'],
+                           linestyle=style['linestyle'],
+                           capsize=3,
+                           markersize=8,
+                           linewidth=2)
+
+        ax.set_xlabel('Number of Traces', fontsize=12)
+        ax.set_ylabel('Accuracy (%)', fontsize=12)
+        ax.set_title(f'{model} - {dataset}', fontsize=14)
+        ax.set_xscale('log', base=2)
+        ax.set_xticks(TRACE_COUNTS)
+        ax.set_xticklabels([str(t) for t in TRACE_COUNTS])
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='lower right')
+
+        # Set y-axis limits with some padding
+        ax.set_ylim(0, 100)
+
+    # Hide unused subplots
+    for idx in range(n_plots, len(axes)):
+        axes[idx].set_visible(False)
+
+    # Overall title
+    if title:
+        fig.suptitle(title, fontsize=16, fontweight='bold')
+    else:
+        fig.suptitle('Accuracy vs Number of Traces', fontsize=16, fontweight='bold')
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to: {output_path}")
+
+    if show:
+        plt.show()
+
+    return fig
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Evaluate subsampled trace experiments')
+    parser.add_argument('--results_dir', type=str, default=DEFAULT_RESULTS_DIR,
+                        help=f'Base directory for results (default: {DEFAULT_RESULTS_DIR})')
+    parser.add_argument('--model', type=str, default=None,
+                        help='Filter by model name')
+    parser.add_argument('--dataset', type=str, default=None,
+                        help='Filter by dataset name')
+    parser.add_argument('--methods', type=str, default=None,
+                        help='Comma-separated list of methods (default: all)')
+    parser.add_argument('--output', '-o', type=str, default=None,
+                        help='Save figure to file (e.g., figure.png)')
+    parser.add_argument('--no-show', action='store_true',
+                        help='Do not display figure (useful for headless servers)')
+    parser.add_argument('--title', type=str, default=None,
+                        help='Custom figure title')
+    parser.add_argument('--list', action='store_true',
+                        help='List available runs without evaluating')
+
+    args = parser.parse_args()
+
+    # Parse methods
+    if args.methods:
+        methods = [m.strip() for m in args.methods.split(',')]
+    else:
+        methods = get_available_methods()
+
+    # List mode
+    if args.list:
+        runs = discover_runs(args.results_dir)
+        print(f"Full runs ({len(runs['full'])}):")
+        for run in sorted(runs['full']):
+            info = parse_run_id(run)
+            print(f"  {run:<50} ({info['model']}, {info['dataset']})")
+        print(f"\nSubset runs ({len(runs['subset'])}):")
+        for run in sorted(runs['subset'])[:20]:
+            info = parse_run_id(run)
+            print(f"  {run:<50} (size={info['subset_size']}, v={info['version']})")
+        if len(runs['subset']) > 20:
+            print(f"  ... and {len(runs['subset']) - 20} more")
+        return
+
+    # Evaluate all runs
+    print("Evaluating runs...")
+    all_results = evaluate_all_runs(
+        args.results_dir,
+        methods=methods,
+        model_filter=args.model,
+        dataset_filter=args.dataset
+    )
+
+    if not all_results:
+        print("No results found!")
+        return
+
+    # Aggregate by trace count
+    aggregated = aggregate_by_trace_count(all_results)
+
+    # Print table
+    print_table(aggregated, methods)
+
+    # Create figure
+    if HAS_MATPLOTLIB:
+        create_figure(
+            aggregated,
+            methods,
+            output_path=args.output,
+            title=args.title,
+            show=not args.no_show
+        )
+    else:
+        print("\nTo generate figures, install matplotlib: pip install matplotlib")
+
+
+if __name__ == "__main__":
+    main()

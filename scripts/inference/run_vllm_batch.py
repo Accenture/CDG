@@ -24,15 +24,15 @@ Output directory structure:
 import sys
 import os
 
-# Add scripts to path for config import
-sys.path.insert(0, os.path.dirname(__file__))
+# Add scripts to path for config and inference_utils imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import PathConfig
 
 # Set HuggingFace cache to large disk (using centralized config)
 PathConfig.setup_hf_env()
 
 # Add deepconf to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deepconf'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'deepconf'))
 
 import json
 import pickle
