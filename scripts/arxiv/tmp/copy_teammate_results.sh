@@ -94,19 +94,9 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
     echo "Skipped ${#MISSING[@]} missing source(s)"
 fi
 
-# If any conflicts, abort entirely
+# Report conflicts (but continue)
 if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
-    echo "========================================"
-    echo "ABORTING: ${#CONFLICTS[@]} conflict(s) detected!"
-    echo "========================================"
-    echo "The following targets already exist:"
-    for conflict in "${CONFLICTS[@]}"; do
-        echo "  - $TARGET_DIR/$conflict"
-    done
-    echo ""
-    echo "No files were copied. Remove existing directories or rename them first."
-    echo "========================================"
-    exit 1
+    echo "Skipping ${#CONFLICTS[@]} conflict(s) - targets already exist"
 fi
 
 # If nothing to copy
