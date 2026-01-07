@@ -145,6 +145,12 @@ def process_single_file(
             # Save
             output_path = os.path.join(output_dir, f"qid{qid}_{timestamp}.pkl")
 
+            # Skip if file already exists
+            if os.path.exists(output_path):
+                stats.setdefault('files_skipped', 0)
+                stats['files_skipped'] += 1
+                continue
+
             if not dry_run:
                 with open(output_path, 'wb') as f:
                     pickle.dump(subset_data, f)
@@ -189,7 +195,7 @@ def process_experiment(
     print(f"Total output files per question: {len(subset_sizes) * num_versions}")
     print(f"{'='*60}")
 
-    total_stats = {'files_created': 0, 'errors': [], 'files_processed': 0}
+    total_stats = {'files_created': 0, 'files_skipped': 0, 'errors': [], 'files_processed': 0}
 
     for i, pkl_path in enumerate(pkl_files, 1):
         basename = os.path.basename(pkl_path)
@@ -206,10 +212,12 @@ def process_experiment(
         )
 
         total_stats['files_created'] += stats['files_created']
+        total_stats['files_skipped'] += stats.get('files_skipped', 0)
         total_stats['errors'].extend(stats['errors'])
         total_stats['files_processed'] += 1
 
-        print(f"  Created {stats['files_created']} subset files")
+        skipped = stats.get('files_skipped', 0)
+        print(f"  Created {stats['files_created']} subset files" + (f", skipped {skipped} existing" if skipped else ""))
         if stats['errors']:
             for err in stats['errors']:
                 print(f"  ERROR: {err}")
@@ -266,7 +274,7 @@ def main():
         os.makedirs(output_base, exist_ok=True)
 
     # Process each experiment
-    grand_total = {'files_created': 0, 'errors': [], 'experiments_processed': 0}
+    grand_total = {'files_created': 0, 'files_skipped': 0, 'errors': [], 'experiments_processed': 0}
 
     for experiment in experiments:
         stats = process_experiment(
@@ -284,6 +292,7 @@ def main():
             grand_total['errors'].append(stats['error'])
         else:
             grand_total['files_created'] += stats['files_created']
+            grand_total['files_skipped'] += stats.get('files_skipped', 0)
             grand_total['errors'].extend(stats['errors'])
             grand_total['experiments_processed'] += 1
 
@@ -299,6 +308,7 @@ def main():
     print("="*60)
     print(f"Experiments processed: {grand_total['experiments_processed']}")
     print(f"Total subset files created: {grand_total['files_created']}")
+    print(f"Total subset files skipped: {grand_total.get('files_skipped', 0)}")
     print(f"Total errors: {len(grand_total['errors'])}")
     if grand_total['errors']:
         print("\nErrors:")
