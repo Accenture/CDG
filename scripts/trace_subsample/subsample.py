@@ -25,9 +25,10 @@ from datetime import datetime
 
 # Add paths for imports
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', '..', 'deepconf'))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', '..', 'deepconf', 'deepconf'))
 
-from deepconf.utils import compute_all_voting_results
+# Import directly from utils to avoid vllm dependency
+from utils import compute_all_voting_results
 from config import SUBSET_SIZES, NUM_VERSIONS, VERSION_SEEDS, SOURCE_EXPERIMENTS, RESULTS_BASE, OUTPUT_SUBDIR
 
 
