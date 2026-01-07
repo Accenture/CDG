@@ -34,7 +34,7 @@ import multiprocessing as mp
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from config import PathConfig
-from eval_methods import load_run_results, evaluate_with_method, get_available_methods, EVAL_METHODS
+from eval_methods import load_run_results, evaluate_with_method, get_available_methods, EVAL_METHODS, DEFAULT_PARAMS
 
 # Try to import matplotlib (optional for figure generation)
 try:
@@ -148,13 +148,13 @@ def discover_runs(results_dir: str, subset_dir: str = None) -> dict:
 
 def evaluate_single_run(args: tuple) -> tuple:
     """Worker function for parallel run evaluation."""
-    run_id, run_path, method = args
+    run_id, run_path, method, params = args
     results_by_qid = load_run_results(run_path)
 
     if not results_by_qid:
         return run_id, method, None
 
-    result = evaluate_with_method(results_by_qid, method)
+    result = evaluate_with_method(results_by_qid, method, params)
     info = parse_run_id(run_id)
 
     return run_id, method, {
@@ -165,7 +165,7 @@ def evaluate_single_run(args: tuple) -> tuple:
 
 def evaluate_all_runs(results_dir: str, methods: list = None,
                       model_filter: str = None, dataset_filter: str = None,
-                      num_workers: int = None) -> dict:
+                      num_workers: int = None, params: dict = None) -> dict:
     """
     Evaluate all runs with specified methods.
 
@@ -174,6 +174,9 @@ def evaluate_all_runs(results_dir: str, methods: list = None,
     """
     if methods is None:
         methods = get_available_methods()
+
+    if params is None:
+        params = DEFAULT_PARAMS.copy()
 
     runs = discover_runs(results_dir)
     all_run_ids = runs['full'] + runs['subset']
@@ -207,7 +210,7 @@ def evaluate_all_runs(results_dir: str, methods: list = None,
             run_path = os.path.join(results_dir, run_id)
 
         for method in methods:
-            tasks.append((run_id, run_path, method))
+            tasks.append((run_id, run_path, method, params))
 
     # Run evaluations in parallel
     all_results = defaultdict(dict)
@@ -329,8 +332,11 @@ def create_figure(aggregated: dict, methods: list, output_path: str = None,
     # Define colors and markers for methods
     method_styles = {
         'majority': {'color': 'blue', 'marker': 'o', 'linestyle': '-'},
-        'weighted': {'color': 'red', 'marker': 's', 'linestyle': '--'},
-        'confidence': {'color': 'green', 'marker': '^', 'linestyle': '-.'},
+        'deepconf_mean': {'color': 'orange', 'marker': 's', 'linestyle': '--'},
+        'deepconf_tail': {'color': 'green', 'marker': '^', 'linestyle': '-.'},
+        'deepconf_bottom': {'color': 'purple', 'marker': 'v', 'linestyle': ':'},
+        'gradient': {'color': 'red', 'marker': 'D', 'linestyle': '-'},
+        'cdg': {'color': 'black', 'marker': '*', 'linestyle': '--'},
     }
 
     # Create figure with subplots for each (model, dataset) combination
@@ -428,7 +434,31 @@ def main():
     parser.add_argument('--list', action='store_true',
                         help='List available runs without evaluating')
 
+    # Method parameters
+    parser.add_argument('--alpha', type=float, default=DEFAULT_PARAMS['alpha'],
+                        help=f'CDG count dampening exponent (default: {DEFAULT_PARAMS["alpha"]})')
+    parser.add_argument('--beta', type=float, default=DEFAULT_PARAMS['beta'],
+                        help=f'Gradient weight (default: {DEFAULT_PARAMS["beta"]})')
+    parser.add_argument('--position_pct', type=int, default=DEFAULT_PARAMS['position_pct'],
+                        help=f'Percentile for gradient computation (default: {DEFAULT_PARAMS["position_pct"]})')
+    parser.add_argument('--tail_window', type=int, default=DEFAULT_PARAMS['tail_window'],
+                        help=f'Window size for tail confidence (default: {DEFAULT_PARAMS["tail_window"]})')
+    parser.add_argument('--bottom_window', type=int, default=DEFAULT_PARAMS['bottom_window'],
+                        help=f'Window size for bottom window (default: {DEFAULT_PARAMS["bottom_window"]})')
+    parser.add_argument('--bottom_pct', type=float, default=DEFAULT_PARAMS['bottom_pct'],
+                        help=f'Bottom percentile for bottom window (default: {DEFAULT_PARAMS["bottom_pct"]})')
+
     args = parser.parse_args()
+
+    # Build params dict
+    params = {
+        'alpha': args.alpha,
+        'beta': args.beta,
+        'position_pct': args.position_pct,
+        'tail_window': args.tail_window,
+        'bottom_window': args.bottom_window,
+        'bottom_pct': args.bottom_pct,
+    }
 
     # Parse methods
     if args.methods:
@@ -449,15 +479,19 @@ def main():
             print(f"  {run:<50} (size={info['subset_size']}, v={info['version']})")
         if len(runs['subset']) > 20:
             print(f"  ... and {len(runs['subset']) - 20} more")
+        print(f"\nAvailable methods: {', '.join(get_available_methods())}")
         return
 
     # Evaluate all runs
     print("Evaluating runs...")
+    print(f"Methods: {', '.join(methods)}")
+    print(f"Parameters: alpha={params['alpha']}, beta={params['beta']}")
     all_results = evaluate_all_runs(
         args.results_dir,
         methods=methods,
         model_filter=args.model,
-        dataset_filter=args.dataset
+        dataset_filter=args.dataset,
+        params=params
     )
 
     if not all_results:
