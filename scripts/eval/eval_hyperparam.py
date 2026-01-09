@@ -479,9 +479,9 @@ Examples:
 
     parser.add_argument('--results_dir', type=str, default=DEFAULT_RESULTS_DIR,
                         help=f'Base directory for results (default: {DEFAULT_RESULTS_DIR})')
-    parser.add_argument('--sweep', type=str, required=True,
+    parser.add_argument('--sweep', type=str, required=False,
                         choices=['beta', 'position_pct'],
-                        help='Parameter to sweep')
+                        help='Parameter to sweep (required unless --show-config)')
     parser.add_argument('--trace_count', type=int, default=512,
                         help='Trace count to use (default: 512, use 256 for faster tuning)')
     parser.add_argument('--model', type=str, default=None,
@@ -548,6 +548,10 @@ Examples:
     if args.show_config:
         hyperparam_config.print_summary()
         return
+
+    # Validate --sweep is required for actual sweep operations
+    if not args.sweep:
+        parser.error("--sweep is required (choose from: beta, position_pct)")
 
     # Initialize cache
     cache = EvalCache(args.results_dir, enabled=not args.no_cache)
