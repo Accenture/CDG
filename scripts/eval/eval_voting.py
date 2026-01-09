@@ -44,7 +44,7 @@ import argparse
 import fnmatch
 from collections import defaultdict
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing as mp
 
 # Add paths for imports
@@ -59,6 +59,8 @@ from eval_methods import (
     EVAL_METHODS,
     DEFAULT_PARAMS,
 )
+from eval_cache import EvalCache
+from hyperparam_config import HyperparamConfig
 
 DEFAULT_RESULTS_DIR = PathConfig.OUTPUT_BASE
 
@@ -105,46 +107,139 @@ def discover_runs(results_dir: str, pattern: str = None) -> list:
 
 def evaluate_single_run(args: tuple) -> tuple:
     """Worker function for parallel run evaluation."""
-    run_id, results_dir, method, params = args
+    # Unpack args - hyperparam_config is optional (for model-specific params)
+    if len(args) == 5:
+        run_id, results_dir, method, params, hyperparam_config = args
+    else:
+        run_id, results_dir, method, params = args
+        hyperparam_config = None
+
     run_path = os.path.join(results_dir, run_id)
-    results_by_qid = load_run_results(run_path)
+
+    # IMPORTANT: use_threads=False to avoid nested ThreadPoolExecutor
+    # which causes "can't start new thread" errors
+    results_by_qid = load_run_results(run_path, use_threads=False)
 
     if not results_by_qid:
         return run_id, method, None
 
-    result = evaluate_with_method(results_by_qid, method, params)
+    # Get model-specific params if hyperparam_config provided
     info = parse_run_id(run_id)
+    eval_params = params.copy()
+
+    if hyperparam_config is not None and info['model']:
+        model_params = hyperparam_config.get_model_params(info['model'], use_defaults=False)
+        if model_params:
+            eval_params.update(model_params)
+
+    result = evaluate_with_method(results_by_qid, method, eval_params)
 
     return run_id, method, {'info': info, 'result': result}
 
 
 def evaluate_all_runs(results_dir: str, methods: list, params: dict,
-                      pattern: str = None, num_workers: int = None) -> dict:
-    """Evaluate all runs with specified methods in parallel."""
+                      pattern: str = None, num_workers: int = None,
+                      cache: EvalCache = None,
+                      hyperparam_config: HyperparamConfig = None) -> dict:
+    """
+    Evaluate all runs with specified methods.
+
+    Uses caching to skip already-computed results and shows progress.
+
+    Args:
+        results_dir: Base results directory
+        methods: List of method names to evaluate
+        params: Parameters dict for evaluation methods
+        pattern: Optional glob pattern to filter runs
+        num_workers: Max parallel workers (None = auto, capped at 8 to avoid thread issues)
+        cache: EvalCache instance for caching results
+        hyperparam_config: HyperparamConfig for model-specific params (optional)
+
+    Returns:
+        {run_id: {method: {'info': ..., 'result': ...}, ...}, ...}
+    """
     runs = discover_runs(results_dir, pattern)
 
     if not runs:
         print(f"No runs found in {results_dir}")
         return {}
 
-    print(f"Found {len(runs)} runs to evaluate with {len(methods)} method(s)...")
-
-    if num_workers is None:
-        num_workers = min(mp.cpu_count(), len(runs) * len(methods), 16)
-
-    # Build task list
-    tasks = []
-    for run_id in runs:
-        for method in methods:
-            tasks.append((run_id, results_dir, method, params))
+    total_tasks = len(runs) * len(methods)
+    print(f"Found {len(runs)} runs to evaluate with {len(methods)} method(s) ({total_tasks} total tasks)")
 
     all_results = defaultdict(dict)
 
+    # Check cache for existing results
+    cached_count = 0
+    tasks_to_run = []
+
+    for run_id in runs:
+        info = parse_run_id(run_id)
+
+        # Get model-specific params for cache key
+        run_params = params.copy()
+        if hyperparam_config is not None and info['model']:
+            model_params = hyperparam_config.get_model_params(info['model'], use_defaults=False)
+            if model_params:
+                run_params.update(model_params)
+
+        for method in methods:
+            if cache is not None:
+                cached_result = cache.load_result(run_id, method, run_params)
+                if cached_result is not None:
+                    all_results[run_id][method] = {'info': info, 'result': cached_result}
+                    cached_count += 1
+                    continue
+            tasks_to_run.append((run_id, results_dir, method, params, hyperparam_config))
+
+    if cached_count > 0:
+        print(f"Loaded {cached_count}/{total_tasks} results from cache")
+
+    if not tasks_to_run:
+        print("All results cached, nothing to compute")
+        return dict(all_results)
+
+    print(f"Computing {len(tasks_to_run)} remaining tasks...")
+
+    # Cap workers to avoid thread exhaustion (each worker loads ~30 pkl files sequentially)
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), len(tasks_to_run), 8)
+
+    completed = 0
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        results = executor.map(evaluate_single_run, tasks)
-        for run_id, method, data in results:
-            if data is not None:
-                all_results[run_id][method] = data
+        # Submit all tasks
+        future_to_task = {
+            executor.submit(evaluate_single_run, task): task
+            for task in tasks_to_run
+        }
+
+        # Process as they complete with progress
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+            run_id = task[0]
+            method = task[2]
+
+            try:
+                run_id, method, data = future.result()
+                if data is not None:
+                    all_results[run_id][method] = data
+
+                    # Save to cache with model-specific params
+                    if cache is not None:
+                        info = data['info']
+                        cache_params = params.copy()
+                        if hyperparam_config is not None and info['model']:
+                            model_params = hyperparam_config.get_model_params(info['model'], use_defaults=False)
+                            if model_params:
+                                cache_params.update(model_params)
+                        cache.save_result(run_id, method, cache_params, data['result'])
+            except Exception as e:
+                print(f"  ERROR processing {run_id}/{method}: {e}")
+
+            completed += 1
+            if completed % 10 == 0 or completed == len(tasks_to_run):
+                print(f"  Progress: {completed}/{len(tasks_to_run)} tasks completed")
 
     return dict(all_results)
 
@@ -323,7 +418,58 @@ Examples:
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Show per-question details')
 
+    # Cache options
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Disable result caching (recompute everything)')
+    parser.add_argument('--clear-cache', action='store_true',
+                        help='Clear all cached results before running')
+    parser.add_argument('--cache-stats', action='store_true',
+                        help='Show cache statistics and exit')
+
+    # Hyperparameter config options
+    parser.add_argument('--use-tuned-params', action='store_true',
+                        help='Use model-specific tuned hyperparameters from config file')
+    parser.add_argument('--show-tuned-params', action='store_true',
+                        help='Show tuned hyperparameters config and exit')
+
+    # Debug mode
+    parser.add_argument('--fast', action='store_true',
+                        help='Fast debug mode: 2 methods, 1 run pattern (results will be inaccurate)')
+
     args = parser.parse_args()
+
+    # Apply fast mode overrides
+    if args.fast:
+        print("=" * 60)
+        print("FAST DEBUG MODE - Results will be inaccurate!")
+        print("=" * 60)
+        args.all_methods = False
+        args.method = "majority"  # Will be overridden to include cdg below
+        args.pattern = args.pattern or "*qwen32b*aime2025*"
+
+    # Initialize hyperparam config
+    hyperparam_config = HyperparamConfig(args.results_dir)
+
+    # Handle --show-tuned-params
+    if args.show_tuned_params:
+        hyperparam_config.print_summary()
+        return
+
+    # Initialize cache
+    cache = EvalCache(args.results_dir, enabled=not args.no_cache)
+
+    # Handle cache-related commands
+    if args.cache_stats:
+        stats = cache.stats()
+        print("Cache Statistics:")
+        for key, value in stats.items():
+            print(f"  {key}: {value}")
+        return
+
+    if args.clear_cache:
+        print("Clearing cache...")
+        cache.clear_results()
+        print("Cache cleared.")
 
     # Build params dict
     params = {
@@ -336,7 +482,9 @@ Examples:
     }
 
     # Determine methods to use
-    if args.all_methods:
+    if args.fast:
+        methods = ['majority', 'cdg']  # Fast mode: only 2 methods
+    elif args.all_methods:
         methods = get_available_methods()
     else:
         methods = [args.method]
@@ -357,10 +505,23 @@ Examples:
     # Evaluate all runs
     if args.all or args.pattern:
         print(f"Methods: {', '.join(EVAL_METHODS[m]['name'] for m in methods)}")
-        print(f"Parameters: alpha={params['alpha']}, beta={params['beta']}")
+        if args.use_tuned_params:
+            print(f"Parameters: using model-specific tuned hyperparameters")
+            tuned_models = hyperparam_config.get_all_models()
+            if tuned_models:
+                print(f"  Tuned models: {', '.join(tuned_models)}")
+            else:
+                print(f"  WARNING: No tuned params found, using defaults")
+        else:
+            print(f"Parameters: alpha={params['alpha']}, beta={params['beta']}, position_pct={params['position_pct']}")
+        if not args.no_cache:
+            print(f"Cache: enabled (use --no-cache to disable)")
         print()
 
-        all_results = evaluate_all_runs(args.results_dir, methods, params, args.pattern)
+        # Pass hyperparam_config only if --use-tuned-params is set
+        hp_config = hyperparam_config if args.use_tuned_params else None
+        all_results = evaluate_all_runs(args.results_dir, methods, params, args.pattern,
+                                        cache=cache, hyperparam_config=hp_config)
         print_summary_table(all_results, methods)
         return
 

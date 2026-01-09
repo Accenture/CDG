@@ -37,6 +37,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from config import PathConfig
 from eval_methods import load_run_results, evaluate_cdg, DEFAULT_PARAMS
+from eval_cache import EvalCache
+from hyperparam_config import HyperparamConfig, find_best_params_across_datasets
 
 # Try to import matplotlib
 try:
@@ -160,13 +162,8 @@ def discover_runs(results_dir: str, trace_count: int = None,
 
 
 def evaluate_with_params(run_info: dict, alpha: float, beta: float,
-                         position_pct: int = 20) -> dict:
+                         position_pct: int = 20, cache: EvalCache = None) -> dict:
     """Evaluate a single run with specific parameters."""
-    results_by_qid = load_run_results(run_info['path'])
-
-    if not results_by_qid:
-        return None
-
     params = {
         'alpha': alpha,
         'beta': beta,
@@ -176,10 +173,39 @@ def evaluate_with_params(run_info: dict, alpha: float, beta: float,
         'bottom_pct': DEFAULT_PARAMS['bottom_pct'],
     }
 
+    # Check cache first
+    run_id = run_info['run_id']
+    if cache is not None:
+        cached = cache.load_result(run_id, 'cdg', params)
+        if cached is not None:
+            return {
+                'run_id': run_id,
+                'model': run_info['info']['model'],
+                'dataset': run_info['info']['dataset'],
+                'trace_count': run_info['trace_count'],
+                'alpha': alpha,
+                'beta': beta,
+                'position_pct': position_pct,
+                'correct': cached['correct'],
+                'total': cached['total'],
+                'accuracy': cached['accuracy'],
+                'cached': True,
+            }
+
+    # Load results (sequential to avoid thread issues if called in parallel)
+    results_by_qid = load_run_results(run_info['path'], use_threads=False)
+
+    if not results_by_qid:
+        return None
+
     result = evaluate_cdg(results_by_qid, params)
 
+    # Save to cache
+    if cache is not None:
+        cache.save_result(run_id, 'cdg', params, result)
+
     return {
-        'run_id': run_info['run_id'],
+        'run_id': run_id,
         'model': run_info['info']['model'],
         'dataset': run_info['info']['dataset'],
         'trace_count': run_info['trace_count'],
@@ -189,11 +215,13 @@ def evaluate_with_params(run_info: dict, alpha: float, beta: float,
         'correct': result['correct'],
         'total': result['total'],
         'accuracy': result['accuracy'],
+        'cached': False,
     }
 
 
 def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
-               position_pct: int = 20, num_workers: int = None) -> list:
+               position_pct: int = 20, num_workers: int = None,
+               cache: EvalCache = None) -> list:
     """
     Sweep over beta values for given alpha values.
 
@@ -203,9 +231,6 @@ def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
         alpha_values = ALPHA_VALUES
     if beta_values is None:
         beta_values = BETA_VALUES
-
-    if num_workers is None:
-        num_workers = min(mp.cpu_count(), 16)
 
     # Build task list
     tasks = []
@@ -217,20 +242,28 @@ def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
     print(f"Running {len(tasks)} evaluations ({len(runs)} runs x {len(alpha_values)} alphas x {len(beta_values)} betas)...")
 
     results = []
+    cached_count = 0
 
-    # Sequential for stability (can parallelize if needed)
+    # Sequential processing with cache support
     for i, (run, alpha, beta, pct) in enumerate(tasks):
-        if (i + 1) % 50 == 0:
-            print(f"  Progress: {i+1}/{len(tasks)}")
-        result = evaluate_with_params(run, alpha, beta, pct)
+        result = evaluate_with_params(run, alpha, beta, pct, cache=cache)
         if result:
+            if result.get('cached'):
+                cached_count += 1
             results.append(result)
+
+        if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
+            print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
+
+    if cached_count > 0:
+        print(f"Loaded {cached_count}/{len(tasks)} results from cache")
 
     return results
 
 
 def sweep_position_pct(runs: list, position_pct_values: list = None,
-                       alpha: float = 0.5, beta: float = 10) -> list:
+                       alpha: float = 0.5, beta: float = 10,
+                       cache: EvalCache = None) -> list:
     """Sweep over position_pct values."""
     if position_pct_values is None:
         position_pct_values = POSITION_PCT_VALUES
@@ -243,10 +276,17 @@ def sweep_position_pct(runs: list, position_pct_values: list = None,
     print(f"Running {len(tasks)} evaluations...")
 
     results = []
-    for run, a, b, pct in tasks:
-        result = evaluate_with_params(run, a, b, pct)
+    cached_count = 0
+
+    for i, (run, a, b, pct) in enumerate(tasks):
+        result = evaluate_with_params(run, a, b, pct, cache=cache)
         if result:
+            if result.get('cached'):
+                cached_count += 1
             results.append(result)
+
+        if (i + 1) % 10 == 0 or (i + 1) == len(tasks):
+            print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
 
     return results
 
@@ -471,7 +511,51 @@ Examples:
     parser.add_argument('--title', type=str, default=None,
                         help='Custom figure title')
 
+    # Cache options
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Disable result caching')
+    parser.add_argument('--clear-cache', action='store_true',
+                        help='Clear cache before running')
+
+    # Hyperparameter config options
+    parser.add_argument('--save-config', action='store_true',
+                        help='Save best hyperparameters per model to config file')
+    parser.add_argument('--show-config', action='store_true',
+                        help='Show current hyperparameter config and exit')
+
+    # Debug mode
+    parser.add_argument('--fast', action='store_true',
+                        help='Fast debug mode: 1 alpha, 2 betas, 1 model (results will be inaccurate)')
+
     args = parser.parse_args()
+
+    # Apply fast mode overrides
+    if args.fast:
+        print("=" * 60)
+        print("FAST DEBUG MODE - Results will be inaccurate!")
+        print("=" * 60)
+        args.alphas = "0.5"
+        args.beta_min = 10
+        args.beta_max = 20
+        args.beta_step = 10  # Only 10, 20
+        args.model = args.model or "qwen32b"  # Default to first model found
+        args.trace_count = 512  # Use full runs (faster to find than subsets)
+
+    # Initialize hyperparam config
+    hyperparam_config = HyperparamConfig(args.results_dir)
+
+    # Handle --show-config
+    if args.show_config:
+        hyperparam_config.print_summary()
+        return
+
+    # Initialize cache
+    cache = EvalCache(args.results_dir, enabled=not args.no_cache)
+
+    if args.clear_cache:
+        print("Clearing cache...")
+        cache.clear_results()
+        print("Cache cleared.")
 
     # Parse alpha values
     alpha_values = [float(a.strip()) for a in args.alphas.split(',')]
@@ -516,12 +600,17 @@ Examples:
     print()
 
     # Run sweep
+    if not args.no_cache:
+        print(f"Cache: enabled (use --no-cache to disable)")
+    print()
+
     if args.sweep == 'beta':
         results = sweep_beta(
             runs,
             alpha_values=alpha_values,
             beta_values=beta_values,
-            position_pct=args.position_pct
+            position_pct=args.position_pct,
+            cache=cache
         )
         aggregated = aggregate_results(results, group_by='beta')
         print_results_table(aggregated, param_name='beta')
@@ -539,14 +628,48 @@ Examples:
             runs,
             position_pct_values=POSITION_PCT_VALUES,
             alpha=alpha_values[0],
-            beta=beta_values[len(beta_values)//2]  # middle beta
+            beta=beta_values[len(beta_values)//2],  # middle beta
+            cache=cache
         )
         aggregated = aggregate_results(results, group_by='position_pct')
         print_results_table(aggregated, param_name='position_pct')
 
-    # Save results
+    # Save results to JSON
     if args.output:
         save_results(results, args.output)
+
+    # Save best hyperparameters per model to config
+    if args.save_config and results:
+        print("\n" + "=" * 70)
+        print("SAVING BEST HYPERPARAMETERS PER MODEL")
+        print("=" * 70)
+
+        # Find unique models in results
+        models = list(set(r.get('model') for r in results if r.get('model')))
+
+        for model in sorted(models):
+            best = find_best_params_across_datasets(results, model)
+            if best:
+                hyperparam_config.set_model_params(
+                    model=model,
+                    alpha=best['alpha'],
+                    beta=best['beta'],
+                    position_pct=best['position_pct'],
+                    accuracy=best['accuracy'],
+                    tuning_details={
+                        'correct': best['correct'],
+                        'total': best['total'],
+                        'datasets': best.get('datasets', []),
+                        'sweep_type': args.sweep,
+                        'trace_count': args.trace_count,
+                    }
+                )
+                print(f"  {model}: alpha={best['alpha']}, beta={best['beta']}, "
+                      f"position_pct={best['position_pct']} "
+                      f"(accuracy={100*best['accuracy']:.1f}%)")
+
+        hyperparam_config.save()
+        hyperparam_config.print_summary()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,9 @@
 #
 # Usage:
 #   ./run_all_experiments.sh                    # Run all experiments
+#   ./run_all_experiments.sh --fast             # Fast debug mode (inaccurate results)
 #   ./run_all_experiments.sh --exp 3            # Run only Exp 3 (hyperparam)
+#   ./run_all_experiments.sh --exp 3 --fast     # Fast debug Exp 3 only
 #   ./run_all_experiments.sh --exp 3 --dry-run  # Show commands without running
 
 set -e
@@ -24,14 +26,27 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Parse arguments
 DRY_RUN=false
+FAST_MODE=false
 RUN_EXP=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --dry-run) DRY_RUN=true; shift ;;
+        --fast) FAST_MODE=true; shift ;;
         --exp) RUN_EXP="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# Fast mode flag for Python scripts
+FAST_FLAG=""
+if $FAST_MODE; then
+    FAST_FLAG="--fast"
+    echo ""
+    echo "############################################"
+    echo "#  FAST DEBUG MODE - Results inaccurate!  #"
+    echo "############################################"
+    echo ""
+fi
 
 run_cmd() {
     echo "=========================================="
@@ -55,75 +70,32 @@ run_exp3() {
     echo "########################################"
     echo ""
 
-    # 3a. Sweep position_pct (10 vs 20 vs 30) with 256 traces
-    echo "--- 3a. Position PCT sweep ---"
-    run_cmd python scripts/eval/eval_hyperparam.py \
-        --sweep position_pct \
-        --trace_count 256 \
-        --output "$OUTPUT_DIR/hyperparam_position_pct_${TIMESTAMP}.json" \
-        --no-show
+    # Full sweep: all alpha/beta combinations across all models
+    # Using 512 traces (full runs) for more accurate tuning
+    echo "--- Running comprehensive beta sweep ---"
+    echo "Alpha values: 0.5, 1.0"
+    echo "Beta range: 10-50 (step 5)"
+    echo "Position PCT: 20"
+    echo ""
 
-    # 3b. Beta sweep with alpha=0.5, position_pct=10
-    echo "--- 3b. Beta sweep (alpha=0.5, position_pct=10) ---"
     run_cmd python scripts/eval/eval_hyperparam.py \
         --sweep beta \
-        --trace_count 256 \
-        --alphas 0.5 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
-        --position_pct 10 \
-        --output "$OUTPUT_DIR/hyperparam_beta_a0.5_pct10_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_beta_a0.5_pct10_${TIMESTAMP}.png" \
-        --no-show
-
-    # 3c. Beta sweep with alpha=0.5, position_pct=20
-    echo "--- 3c. Beta sweep (alpha=0.5, position_pct=20) ---"
-    run_cmd python scripts/eval/eval_hyperparam.py \
-        --sweep beta \
-        --trace_count 256 \
-        --alphas 0.5 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
-        --position_pct 20 \
-        --output "$OUTPUT_DIR/hyperparam_beta_a0.5_pct20_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_beta_a0.5_pct20_${TIMESTAMP}.png" \
-        --no-show
-
-    # 3d. Beta sweep with alpha=1.0, position_pct=10
-    echo "--- 3d. Beta sweep (alpha=1.0, position_pct=10) ---"
-    run_cmd python scripts/eval/eval_hyperparam.py \
-        --sweep beta \
-        --trace_count 256 \
-        --alphas 1.0 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
-        --position_pct 10 \
-        --output "$OUTPUT_DIR/hyperparam_beta_a1.0_pct10_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_beta_a1.0_pct10_${TIMESTAMP}.png" \
-        --no-show
-
-    # 3e. Beta sweep with alpha=1.0, position_pct=20
-    echo "--- 3e. Beta sweep (alpha=1.0, position_pct=20) ---"
-    run_cmd python scripts/eval/eval_hyperparam.py \
-        --sweep beta \
-        --trace_count 256 \
-        --alphas 1.0 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
-        --position_pct 20 \
-        --output "$OUTPUT_DIR/hyperparam_beta_a1.0_pct20_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_beta_a1.0_pct20_${TIMESTAMP}.png" \
-        --no-show
-
-    # 3f. Combined figure: both alphas
-    echo "--- 3f. Combined beta sweep (both alphas) ---"
-    run_cmd python scripts/eval/eval_hyperparam.py \
-        --sweep beta \
-        --trace_count 256 \
+        --trace_count 512 \
         --alphas 0.5,1.0 \
         --beta_min 10 --beta_max 50 --beta_step 5 \
         --position_pct 20 \
-        --output "$OUTPUT_DIR/hyperparam_beta_combined_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_beta_combined_${TIMESTAMP}.png" \
-        --no-show
+        --output "$OUTPUT_DIR/hyperparam_sweep_${TIMESTAMP}.json" \
+        --figure "$OUTPUT_DIR/hyperparam_sweep_${TIMESTAMP}.png" \
+        --save-config \
+        --no-show \
+        $FAST_FLAG
 
-    echo "Exp 3 complete. Check $OUTPUT_DIR for results."
+    echo ""
+    echo "--- Saved optimal hyperparameters per model ---"
+    run_cmd python scripts/eval/eval_hyperparam.py --show-config
+
+    echo ""
+    echo "Exp 3 complete. Optimal hyperparameters saved to cdg_hyperparams.json"
 }
 
 # ============================================================
@@ -136,9 +108,14 @@ run_exp2() {
     echo "########################################"
     echo ""
 
+    echo "Using model-specific tuned hyperparameters from Exp 3"
+    echo ""
+
     run_cmd python scripts/eval/eval_subsample.py \
+        --use-tuned-params \
         --output "$OUTPUT_DIR/subsample_scaling_${TIMESTAMP}.png" \
-        --no-show
+        --no-show \
+        $FAST_FLAG
 
     echo "Exp 2 complete."
 }
@@ -153,19 +130,13 @@ run_exp1() {
     echo "########################################"
     echo ""
 
-    # Note: Update alpha/beta based on Exp 3 results
-    # Default params - modify after tuning
-    ALPHA=0.5
-    BETA=10
-    POSITION_PCT=20
-
-    echo "Using parameters: alpha=$ALPHA, beta=$BETA, position_pct=$POSITION_PCT"
-    echo "(Update these based on Exp 3 hyperparameter tuning results)"
+    echo "Using model-specific tuned hyperparameters from Exp 3"
     echo ""
 
     run_cmd python scripts/eval/eval_voting.py \
         --all --all-methods \
-        --alpha $ALPHA --beta $BETA --position_pct $POSITION_PCT \
+        --use-tuned-params \
+        $FAST_FLAG \
         2>&1 | tee "$OUTPUT_DIR/main_eval_${TIMESTAMP}.txt"
 
     echo "Exp 1 complete."

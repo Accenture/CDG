@@ -139,9 +139,14 @@ def load_single_pickle(filename: Path) -> tuple:
         return None, None
 
 
-def load_run_results(results_dir: str, num_workers: int = None) -> dict:
+def load_run_results(results_dir: str, num_workers: int = None, use_threads: bool = True) -> dict:
     """
     Load all result pickle files from a run directory.
+
+    Args:
+        results_dir: Path to run directory containing .pkl files
+        num_workers: Number of parallel workers (None = auto)
+        use_threads: If False, load sequentially (use when called from within threads)
 
     Returns:
         dict: {qid: [result_data, ...]} mapping question IDs to result data
@@ -151,14 +156,21 @@ def load_run_results(results_dir: str, num_workers: int = None) -> dict:
     if not pkl_files:
         return {}
 
-    if num_workers is None:
-        num_workers = min(mp.cpu_count(), len(pkl_files), 8)
-
     results_by_qid = defaultdict(list)
 
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        results = executor.map(load_single_pickle, pkl_files)
-        for qid, data in results:
+    if use_threads and len(pkl_files) > 4:
+        if num_workers is None:
+            num_workers = min(mp.cpu_count(), len(pkl_files), 8)
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            results = executor.map(load_single_pickle, pkl_files)
+            for qid, data in results:
+                if qid is not None:
+                    results_by_qid[qid].append(data)
+    else:
+        # Sequential loading - safe when called from within thread pool
+        for pkl_file in pkl_files:
+            qid, data = load_single_pickle(pkl_file)
             if qid is not None:
                 results_by_qid[qid].append(data)
 
@@ -427,6 +439,75 @@ def evaluate_gradient(results_by_qid: dict, params: dict = None) -> dict:
     }
 
 
+def evaluate_oracle(results_by_qid: dict, params: dict = None) -> dict:
+    """
+    Oracle upper bound - correct if ANY trace has the right answer.
+
+    This represents the theoretical maximum accuracy achievable with perfect
+    answer selection. Useful as an upper bound to compare voting methods against.
+    """
+    correct = 0
+    total = 0
+    per_question = []
+
+    for qid in sorted(results_by_qid.keys()):
+        results_list = results_by_qid[qid]
+
+        all_traces = []
+        ground_truth = None
+
+        for result in results_list:
+            all_traces.extend(result.get('all_traces', []))
+            if ground_truth is None:
+                ground_truth = result.get('ground_truth', '')
+
+        if not all_traces or not ground_truth:
+            continue
+
+        # Extract all answers
+        answers = [t.get('extracted_answer') for t in all_traces if t.get('extracted_answer')]
+
+        if not answers:
+            continue
+
+        total += 1
+
+        # Oracle: correct if ANY answer matches ground truth
+        is_correct = False
+        matching_answer = None
+        for ans in answers:
+            try:
+                if equal_func(str(ans), str(ground_truth)):
+                    is_correct = True
+                    matching_answer = ans
+                    break
+            except:
+                if str(ans) == str(ground_truth):
+                    is_correct = True
+                    matching_answer = ans
+                    break
+
+        if is_correct:
+            correct += 1
+
+        per_question.append({
+            'qid': qid,
+            'ground_truth': ground_truth,
+            'predicted': matching_answer if is_correct else answers[0] if answers else None,
+            'correct': is_correct,
+            'num_traces': len(all_traces),
+            'num_valid_answers': len(answers),
+            'has_correct_trace': is_correct,
+        })
+
+    return {
+        'correct': correct,
+        'total': total,
+        'accuracy': correct / total if total > 0 else 0,
+        'per_question': per_question,
+    }
+
+
 def evaluate_cdg(results_by_qid: dict, params: dict = None) -> dict:
     """
     Count-Dampened Gradient (CDG) voting.
@@ -496,6 +577,12 @@ def evaluate_cdg(results_by_qid: dict, params: dict = None) -> dict:
 # ============================================================
 
 EVAL_METHODS = {
+    'oracle': {
+        'name': 'Oracle',
+        'func': evaluate_oracle,
+        'description': 'Upper bound - correct if ANY trace has right answer',
+        'has_params': False,
+    },
     'majority': {
         'name': 'Majority',
         'func': evaluate_majority_vote,

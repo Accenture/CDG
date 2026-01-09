@@ -11,7 +11,31 @@ This directory contains scripts for evaluating sampling credit methods on math r
 | `eval_hyperparam.py` | Hyperparameter tuning for CDG method |
 | `eval_visualization.py` | Confidence position analysis |
 | `eval_methods.py` | Core evaluation functions (library) |
+| `eval_cache.py` | Disk-based caching for evaluation results |
 | `run_all_experiments.sh` | Master script to run all experiments |
+
+## Caching
+
+All evaluation scripts support disk-based caching to speed up repeated runs:
+
+```bash
+# First run - computes everything, saves to cache
+python scripts/eval/eval_voting.py --all --all-methods
+
+# Second run - loads from cache instantly
+python scripts/eval/eval_voting.py --all --all-methods
+
+# Force recompute (disable cache)
+python scripts/eval/eval_voting.py --all --all-methods --no-cache
+
+# Clear cache and recompute
+python scripts/eval/eval_voting.py --all --all-methods --clear-cache
+
+# Check cache statistics
+python scripts/eval/eval_voting.py --cache-stats
+```
+
+Cache is stored in `{results_dir}/.eval_cache/` and automatically invalidates when source pickle files are modified.
 
 ---
 
@@ -22,6 +46,7 @@ This directory contains scripts for evaluating sampling credit methods on math r
 **Goal**: Compare all voting methods across all models and datasets.
 
 **Methods**:
+- `oracle` - Upper bound (correct if ANY trace has right answer)
 - `majority` - Simple majority vote by count
 - `deepconf_mean` - Sum of mean confidence per answer
 - `deepconf_tail` - Sum of tail token confidence
