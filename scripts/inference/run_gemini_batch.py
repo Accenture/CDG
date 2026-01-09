@@ -94,14 +94,24 @@ def create_gemini_model(
     """Create and configure a Gemini model instance."""
     genai.configure(api_key=api_key)
 
-    generation_config = genai.GenerationConfig(
-        temperature=temperature,
-        top_p=top_p,
-        top_k=top_k,
-        max_output_tokens=max_tokens,
-        response_logprobs=True,  # Enable logprobs for chosen tokens
-        logprobs=logprobs,  # Number of top candidates to return (1-20)
-    )
+    # Base config
+    config_kwargs = {
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "max_output_tokens": max_tokens,
+    }
+
+    # Try to enable logprobs (not supported in older google.generativeai versions)
+    try:
+        test_config = genai.GenerationConfig(response_logprobs=True, logprobs=1)
+        config_kwargs["response_logprobs"] = True
+        config_kwargs["logprobs"] = logprobs
+        print("Logprobs enabled")
+    except TypeError:
+        print("WARNING: Logprobs not supported in this API version. Confidence-based voting will not work.")
+
+    generation_config = genai.GenerationConfig(**config_kwargs)
 
     # Disable all safety filters for math problems
     safety_settings = {
