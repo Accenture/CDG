@@ -1,13 +1,13 @@
 """
-Run inference for questions using Google Gemini API.
+Run inference for questions using Google Gemini API (google-genai SDK).
 Processes N questions at a time to reduce memory usage and save incremental results.
 
 Requirements:
-    pip install google-generativeai
+    pip install google-genai
 
 Usage:
     python scripts/inference/run_gemini_batch.py \
-        --model gemini-2.0-flash-thinking-exp \
+        --model gemini-2.0-flash \
         --dataset /path/to/dataset.jsonl \
         --budget 64 \
         --rid gemini_aime2025
@@ -35,7 +35,6 @@ import json
 import pickle
 import argparse
 import re
-import asyncio
 import time as time_module
 import gc
 from datetime import datetime
@@ -43,8 +42,9 @@ from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+# New google-genai SDK
+from google import genai
+from google.genai import types
 
 # Import utils directly to avoid vLLM dependency in deepconf/__init__.py
 _utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'deepconf', 'deepconf', 'utils.py')
@@ -82,52 +82,27 @@ def prepare_prompt(question: str, model_name: str) -> str:
     return question + instruction
 
 
-def create_gemini_model(
-    model_name: str,
-    api_key: str,
+def create_gemini_client(api_key: str) -> genai.Client:
+    """Create a Gemini client instance."""
+    return genai.Client(api_key=api_key)
+
+
+def create_generation_config(
     temperature: float = 1.0,
     top_p: float = 0.95,
     top_k: int = 40,
     max_tokens: int = 65536,
     logprobs: int = 20,
-) -> genai.GenerativeModel:
-    """Create and configure a Gemini model instance."""
-    genai.configure(api_key=api_key)
-
-    # Base config
-    config_kwargs = {
-        "temperature": temperature,
-        "top_p": top_p,
-        "top_k": top_k,
-        "max_output_tokens": max_tokens,
-    }
-
-    # Try to enable logprobs (not supported in older google.generativeai versions)
-    try:
-        test_config = genai.GenerationConfig(response_logprobs=True, logprobs=1)
-        config_kwargs["response_logprobs"] = True
-        config_kwargs["logprobs"] = logprobs
-        print("Logprobs enabled")
-    except TypeError:
-        print("WARNING: Logprobs not supported in this API version. Confidence-based voting will not work.")
-
-    generation_config = genai.GenerationConfig(**config_kwargs)
-
-    # Disable all safety filters for math problems
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    }
-
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        generation_config=generation_config,
-        safety_settings=safety_settings,
+) -> types.GenerateContentConfig:
+    """Create generation config with logprobs enabled."""
+    return types.GenerateContentConfig(
+        temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        max_output_tokens=max_tokens,
+        response_logprobs=True,
+        logprobs=logprobs,
     )
-
-    return model
 
 
 def extract_logprobs_from_response(response) -> Tuple[List[float], int]:
@@ -142,49 +117,42 @@ def extract_logprobs_from_response(response) -> Tuple[List[float], int]:
     num_tokens = 0
 
     try:
-        # Check if logprobs_result exists in the response
-        if hasattr(response, 'candidates') and response.candidates:
+        if response.candidates:
             candidate = response.candidates[0]
 
-            # Try to get logprobs from the candidate
+            # Check for logprobs_result in the new SDK
             if hasattr(candidate, 'logprobs_result') and candidate.logprobs_result:
                 logprobs_result = candidate.logprobs_result
 
-                # Extract chosen candidates' logprobs
-                if hasattr(logprobs_result, 'chosen_candidates'):
+                # Extract from chosen_candidates
+                if hasattr(logprobs_result, 'chosen_candidates') and logprobs_result.chosen_candidates:
                     for token_info in logprobs_result.chosen_candidates:
-                        if hasattr(token_info, 'log_probability'):
-                            # Convert to -logprob format (matching deepconf)
+                        if hasattr(token_info, 'log_probability') and token_info.log_probability is not None:
                             conf = round(-token_info.log_probability, 3)
                             confs.append(float(conf))
                             num_tokens += 1
 
-                # Alternative: check top_candidates structure
-                elif hasattr(logprobs_result, 'top_candidates'):
+                # Alternative: top_candidates structure
+                elif hasattr(logprobs_result, 'top_candidates') and logprobs_result.top_candidates:
                     for step in logprobs_result.top_candidates:
                         if hasattr(step, 'candidates') and step.candidates:
-                            # Take the first (chosen) candidate's logprob
                             chosen = step.candidates[0]
-                            if hasattr(chosen, 'log_probability'):
+                            if hasattr(chosen, 'log_probability') and chosen.log_probability is not None:
                                 conf = round(-chosen.log_probability, 3)
                                 confs.append(float(conf))
                                 num_tokens += 1
 
-            # Fallback: try avg_logprobs if available
-            if not confs and hasattr(candidate, 'avg_logprobs') and candidate.avg_logprobs is not None:
-                # We don't have per-token, but we can note the average
-                pass
-
     except Exception as e:
-        # If logprobs extraction fails, return empty list
         pass
 
     return confs, num_tokens
 
 
 def call_gemini_api(
-    model: genai.GenerativeModel,
+    client: genai.Client,
+    model_name: str,
     prompt: str,
+    config: types.GenerateContentConfig,
     sample_idx: int,
     max_retries: int = 5,
     initial_delay: float = 1.0,
@@ -200,7 +168,11 @@ def call_gemini_api(
     for attempt in range(max_retries):
         try:
             start_time = time_module.time()
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config,
+            )
             elapsed_time = time_module.time() - start_time
 
             # Extract text from response
@@ -211,7 +183,8 @@ def call_gemini_api(
                 candidate = response.candidates[0]
                 if candidate.content and candidate.content.parts:
                     text = "".join(part.text for part in candidate.content.parts if hasattr(part, 'text'))
-                finish_reason = str(candidate.finish_reason.name) if candidate.finish_reason else "unknown"
+                if hasattr(candidate, 'finish_reason') and candidate.finish_reason:
+                    finish_reason = str(candidate.finish_reason)
 
             # Extract answer
             extracted_answer = extract_answer_from_text(text)
@@ -223,7 +196,6 @@ def call_gemini_api(
             if num_tokens_from_logprobs > 0:
                 num_tokens = num_tokens_from_logprobs
             else:
-                # Fallback: estimate from text
                 num_tokens = int(len(text.split()) * 1.3)
 
             # Compute min_conf over sliding windows (matching deepconf format)
@@ -239,7 +211,7 @@ def call_gemini_api(
             return {
                 'text': text,
                 'num_tokens': num_tokens,
-                'confs': confs,  # Token-level confidence scores
+                'confs': confs,
                 'min_conf': min_conf,
                 'extracted_answer': extracted_answer,
                 'stop_reason': finish_reason,
@@ -252,17 +224,14 @@ def call_gemini_api(
             last_error = e
             error_str = str(e).lower()
 
-            # Check for rate limit errors
-            if 'quota' in error_str or 'rate' in error_str or '429' in error_str:
-                delay = min(delay * 2, 60)  # exponential backoff, max 60s
+            if 'quota' in error_str or 'rate' in error_str or '429' in error_str or 'resource_exhausted' in error_str:
+                delay = min(delay * 2, 60)
                 time_module.sleep(delay)
             elif 'invalid' in error_str or 'blocked' in error_str:
-                # Content blocked or invalid - don't retry
                 break
             else:
                 time_module.sleep(delay)
 
-    # Return error trace
     return {
         'text': f"ERROR: {str(last_error)}",
         'num_tokens': 0,
@@ -278,20 +247,19 @@ def call_gemini_api(
 
 
 def run_parallel_inference(
-    model: genai.GenerativeModel,
+    client: genai.Client,
+    model_name: str,
     prompts: List[str],
+    config: types.GenerateContentConfig,
     max_workers: int = 8,
     delay_between_calls: float = 0.1,
 ) -> List[Dict[str, Any]]:
-    """
-    Run inference on multiple prompts in parallel using ThreadPoolExecutor.
-    """
+    """Run inference on multiple prompts in parallel using ThreadPoolExecutor."""
     results = [None] * len(prompts)
 
     def call_with_delay(idx: int, prompt: str) -> Dict[str, Any]:
-        # Add small delay to avoid rate limits
         time_module.sleep(idx * delay_between_calls)
-        return call_gemini_api(model, prompt, idx)
+        return call_gemini_api(client, model_name, prompt, config, idx)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -323,7 +291,6 @@ def run_parallel_inference(
 def process_gemini_outputs(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Process Gemini API outputs into standard format."""
     total_tokens = sum(t.get('num_tokens', 0) for t in traces)
-
     return {
         'traces': traces,
         'total_tokens': total_tokens,
@@ -332,39 +299,28 @@ def process_gemini_outputs(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(description='Run Gemini API inference')
-    parser.add_argument('--model', type=str, default="gemini-2.0-flash-thinking-exp",
-                        help="Gemini model name (e.g., gemini-2.0-flash-thinking-exp, gemini-1.5-pro)")
+    parser.add_argument('--model', type=str, default="gemini-2.0-flash",
+                        help="Gemini model name")
     parser.add_argument('--api_key', type=str, default=None,
                         help="Google API key (or set GOOGLE_API_KEY env var)")
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--qid_start', type=int, default=None, help="Start question ID (inclusive)")
-    parser.add_argument('--qid_end', type=int, default=None, help="End question ID (exclusive)")
-    parser.add_argument('--rid', type=str, default=None,
-                        help="Run ID (auto-generates run001, run002, etc. if not specified)")
-    parser.add_argument('--budget', type=int, default=64,
-                        help="Number of samples per question")
-    parser.add_argument('--window_size', type=int, default=2048,
-                        help="Window size for confidence computation (unused for Gemini)")
-    parser.add_argument('--max_tokens', type=int, default=65536,
-                        help="Maximum output tokens")
+    parser.add_argument('--qid_start', type=int, default=None)
+    parser.add_argument('--qid_end', type=int, default=None)
+    parser.add_argument('--rid', type=str, default=None)
+    parser.add_argument('--budget', type=int, default=64)
+    parser.add_argument('--window_size', type=int, default=2048)
+    parser.add_argument('--max_tokens', type=int, default=65536)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--top_p', type=float, default=0.95)
     parser.add_argument('--top_k', type=int, default=40)
-    parser.add_argument('--max_workers', type=int, default=8,
-                        help="Maximum parallel API calls")
-    parser.add_argument('--logprobs', type=int, default=20,
-                        help="Number of top logprobs to return per token (1-20)")
-    parser.add_argument('--delay_between_calls', type=float, default=0.1,
-                        help="Delay between parallel API calls (seconds)")
+    parser.add_argument('--max_workers', type=int, default=8)
+    parser.add_argument('--logprobs', type=int, default=20)
+    parser.add_argument('--delay_between_calls', type=float, default=0.1)
     parser.add_argument('--output_dir', type=str, default=PathConfig.OUTPUT_BASE)
-    parser.add_argument('--save_json', action='store_true',
-                        help="Also save results as human-readable JSON files")
-    parser.add_argument('--json_only', action='store_true',
-                        help="Save only JSON files (no pickle)")
-    parser.add_argument('--chunk_size', type=int, default=1,
-                        help="Number of questions to process per chunk")
-    parser.add_argument('--no_resume', action='store_true',
-                        help="Disable auto-resume (reprocess all questions even if completed)")
+    parser.add_argument('--save_json', action='store_true')
+    parser.add_argument('--json_only', action='store_true')
+    parser.add_argument('--chunk_size', type=int, default=1)
+    parser.add_argument('--no_resume', action='store_true')
 
     args = parser.parse_args()
 
@@ -386,7 +342,7 @@ def main():
     logger = setup_logging(run_dir, logger_name='gemini_inference')
 
     logger.info("="*80)
-    logger.info("GEMINI API INFERENCE RUN")
+    logger.info("GEMINI API INFERENCE RUN (google-genai SDK)")
     logger.info("="*80)
     logger.info(f"Run ID: {args.rid}")
     logger.info(f"Output directory: {run_dir}")
@@ -413,8 +369,6 @@ def main():
         return
 
     num_questions = len(questions_to_process)
-
-    # Split questions into chunks
     chunk_size = args.chunk_size
     num_chunks = (num_questions + chunk_size - 1) // chunk_size
 
@@ -434,18 +388,17 @@ def main():
     logger.info(f"Max parallel workers: {args.max_workers}")
     logger.info("="*80)
 
-    # Initialize Gemini model
-    logger.info("Initializing Gemini model...")
-    model = create_gemini_model(
-        model_name=args.model,
-        api_key=api_key,
+    # Initialize Gemini client and config
+    logger.info("Initializing Gemini client...")
+    client = create_gemini_client(api_key)
+    config = create_generation_config(
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
         max_tokens=args.max_tokens,
         logprobs=args.logprobs,
     )
-    logger.info("Model initialized successfully")
+    logger.info("Client initialized successfully")
 
     # Process questions in chunks
     total_generation_time = 0
@@ -461,7 +414,6 @@ def main():
         logger.info("="*80)
         logger.info(f"Processing questions {chunk_qids[0]} to {chunk_qids[-1]} ({len(chunk_qids)} questions)")
 
-        # Process each question in the chunk
         for qid in chunk_qids:
             questions_completed += 1
             question_data = data[qid]
@@ -474,18 +426,18 @@ def main():
             logger.info(f"Question: {question[:150]}..." if len(question) > 150 else f"Question: {question}")
             logger.info(f"Ground truth answer: {ground_truth}")
 
-            # Prepare prompts
             prompt = prepare_prompt(question, args.model)
             prompts = [prompt] * args.budget
 
-            # Run parallel inference
             logger.info(f"Running {args.budget} API calls with {args.max_workers} workers...")
             logger.info(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             generation_start = time_module.time()
 
             traces = run_parallel_inference(
-                model=model,
+                client=client,
+                model_name=args.model,
                 prompts=prompts,
+                config=config,
                 max_workers=args.max_workers,
                 delay_between_calls=args.delay_between_calls,
             )
@@ -496,21 +448,17 @@ def main():
             logger.info(f"Generation completed in {generation_time:.2f}s")
             logger.info(f"Throughput: {args.budget / generation_time:.2f} calls/s")
 
-            # Process results
             processed = process_gemini_outputs(traces)
 
-            # Count successful and failed traces
             successful_traces = [t for t in traces if t.get('success', True)]
             failed_traces = [t for t in traces if not t.get('success', True)]
+            traces_with_logprobs = [t for t in traces if t.get('confs')]
 
-            # Compute truncation stats
-            truncated_count = sum(1 for t in traces if t.get('stop_reason') == 'MAX_TOKENS')
+            truncated_count = sum(1 for t in traces if 'MAX_TOKENS' in str(t.get('stop_reason', '')))
             truncation_rate = truncated_count / len(traces) if traces else 0
 
-            # Compute voting results
             voting_results = compute_all_voting_results(processed['traces'])
 
-            # Build result data
             result_data = {
                 'question': question,
                 'ground_truth': ground_truth,
@@ -521,6 +469,7 @@ def main():
                 'total_traces_count': len(processed['traces']),
                 'successful_traces_count': len(successful_traces),
                 'failed_traces_count': len(failed_traces),
+                'traces_with_logprobs': len(traces_with_logprobs),
                 'truncated_count': truncated_count,
                 'truncation_rate': truncation_rate,
                 'voting_results': voting_results,
@@ -539,7 +488,6 @@ def main():
                 }
             }
 
-            # Get voted answer
             voted_answer = "N/A"
             if 'majority' in voting_results and voting_results['majority']:
                 voted_answer = voting_results['majority']['answer']
@@ -547,24 +495,22 @@ def main():
                 result_data['final_answer'] = voted_answer
 
             logger.info(f"Voted answer: {voted_answer}")
-            logger.info(f"Total tokens (estimated): {processed['total_tokens']:,}")
+            logger.info(f"Total tokens: {processed['total_tokens']:,}")
             logger.info(f"Successful traces: {len(successful_traces)}/{len(traces)}")
+            logger.info(f"Traces with logprobs: {len(traces_with_logprobs)}/{len(traces)}")
             if failed_traces:
                 logger.warning(f"Failed traces: {len(failed_traces)}")
             if truncated_count > 0:
                 logger.warning(f"Truncated traces: {truncated_count}/{len(traces)} ({truncation_rate:.1%})")
 
-            # Save results
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            # Save pickle (unless json_only)
             if not args.json_only:
                 result_filename = f"{run_dir}/qid{qid}_{timestamp}.pkl"
                 with open(result_filename, 'wb') as f:
                     pickle.dump(result_data, f)
                 logger.info(f"Saved pickle: qid{qid}_{timestamp}.pkl")
 
-            # Save JSON (if requested or json_only)
             if args.save_json or args.json_only:
                 json_filename = f"{run_dir}/qid{qid}_{timestamp}.json"
                 save_result_as_json(result_data, json_filename)
@@ -572,11 +518,9 @@ def main():
 
             logger.info(f"Question {questions_completed}/{num_questions} completed")
 
-        # Clear memory after each chunk
         gc.collect()
         logger.info(f"Chunk {chunk_idx + 1}/{num_chunks} completed")
 
-    # Final summary
     save_format = "JSON only" if args.json_only else ("pickle + JSON" if args.save_json else "pickle")
     logger.info("\n" + "="*80)
     logger.info("FINAL SUMMARY")
