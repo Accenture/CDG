@@ -31,9 +31,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from config import PathConfig
 
-# Add deepconf to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'deepconf'))
-
 import json
 import pickle
 import argparse
@@ -44,10 +41,17 @@ import gc
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor
+import importlib.util
+
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
-from deepconf.utils import compute_all_voting_results
+# Import utils directly to avoid vLLM dependency in deepconf/__init__.py
+_utils_path = os.path.join(os.path.dirname(__file__), '..', '..', 'deepconf', 'deepconf', 'utils.py')
+_spec = importlib.util.spec_from_file_location("deepconf_utils", _utils_path)
+_deepconf_utils = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_deepconf_utils)
+compute_all_voting_results = _deepconf_utils.compute_all_voting_results
 
 # Import shared utilities
 from inference_utils import (
