@@ -63,12 +63,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ============================================================
-# Validation
+# Load API key from file or environment
 # ============================================================
+API_KEY_FILE="${SCRIPT_DIR}/gemini_api_key.txt"
+
 if [[ -z "$GOOGLE_API_KEY" ]]; then
-    echo "ERROR: GOOGLE_API_KEY not set"
-    echo "  export GOOGLE_API_KEY='AIzaSy...'"
-    exit 1
+    if [[ -f "$API_KEY_FILE" ]]; then
+        export GOOGLE_API_KEY=$(cat "$API_KEY_FILE" | tr -d '[:space:]')
+        echo "Loaded API key from ${API_KEY_FILE}"
+    else
+        echo "ERROR: GOOGLE_API_KEY not set and ${API_KEY_FILE} not found"
+        echo ""
+        echo "Option 1: Create key file"
+        echo "  echo 'AIzaSy...' > ${API_KEY_FILE}"
+        echo ""
+        echo "Option 2: Set environment variable"
+        echo "  export GOOGLE_API_KEY='AIzaSy...'"
+        exit 1
+    fi
 fi
 
 if [[ -z "$MODEL" ]] || [[ -z "$DATASET" ]]; then
