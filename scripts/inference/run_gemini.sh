@@ -5,13 +5,16 @@
 #
 # Usage:
 #   ./scripts/inference/run_gemini.sh --model <model> --dataset <dataset>
-#   ./scripts/inference/run_gemini.sh --model <model> --dataset debug
+#   ./scripts/inference/run_gemini.sh --model <model> --dataset <dataset> --batch
 #
 # Examples:
-#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset aime2025
-#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset all
+#   # Interactive mode (real-time)
 #   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset debug
-#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset debug --budget 4
+#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset aime2025
+#
+#   # Batch API mode (50% cost savings, async)
+#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset debug --batch
+#   ./scripts/inference/run_gemini.sh --model gemini-2.0-flash --dataset all --batch
 #
 # Available models:
 #   gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro
@@ -19,8 +22,8 @@
 # Available datasets:
 #   aime2025, aime2024, hmmt2025, bruno2025, all, debug
 #
-# Environment:
-#   GOOGLE_API_KEY    Required. Your Google API key
+# Options:
+#   --batch    Use Batch API (50% cost, async processing)
 #
 # ============================================================
 
@@ -36,6 +39,7 @@ source "${SCRIPT_DIR}/../config.sh"
 MODEL=""
 DATASET=""
 BUDGET=""
+USE_BATCH=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -50,6 +54,10 @@ while [[ $# -gt 0 ]]; do
         --budget)
             BUDGET="$2"
             shift 2
+            ;;
+        --batch)
+            USE_BATCH="--batch"
+            shift
             ;;
         --help|-h)
             head -28 "$0" | tail -26
@@ -192,7 +200,8 @@ run_single() {
         --top_k "${TOP_K}" \
         --logprobs "${DEFAULT_LOGPROBS}" \
         --output_dir "${OUTPUT_BASE}" \
-        --save_json
+        --save_json \
+        ${USE_BATCH}
 
     echo "========================================="
     echo "${DATASET_SUFFIX} completed!"
@@ -206,14 +215,18 @@ run_single() {
 run_debug() {
     local budget=${1:-2}
     local timestamp=$(date +%Y%m%d_%H%M%S)
-    local RID="${RID_PREFIX}_debug_${timestamp}"
+    local mode_suffix=""
+    if [[ -n "$USE_BATCH" ]]; then
+        mode_suffix="_batch"
+    fi
+    local RID="${RID_PREFIX}_debug${mode_suffix}_${timestamp}"
 
     # Create temp test file
     local TEST_FILE=$(mktemp /tmp/gemini_debug_XXXXXX.jsonl)
     echo '{"question": "Find all positive integers n such that n^2 - 19n + 99 is a perfect square. What is the sum of all such n?", "answer": "38"}' > "$TEST_FILE"
 
     echo "========================================="
-    echo "DEBUG MODE"
+    echo "DEBUG MODE${USE_BATCH:+ (BATCH API)}"
     echo "========================================="
     echo "Model: ${MODEL_ID}"
     echo "Budget: ${budget} samples"
@@ -232,7 +245,9 @@ run_debug() {
         --logprobs "${DEFAULT_LOGPROBS}" \
         --output_dir "${OUTPUT_BASE}" \
         --save_json \
-        --qid_end 1
+        --qid_end 1 \
+        --poll_interval 10 \
+        ${USE_BATCH}
 
     rm "$TEST_FILE"
 
@@ -264,7 +279,7 @@ else
 fi
 
 echo "========================================================"
-echo "Gemini Inference: ${MODEL} (${BUDGET} traces)"
+echo "Gemini Inference: ${MODEL} (${BUDGET} traces)${USE_BATCH:+ [BATCH API]}"
 echo "========================================================"
 echo ""
 

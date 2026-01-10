@@ -1,26 +1,29 @@
 """
 Run inference for questions using Google Gemini API (google-genai SDK).
-Processes N questions at a time to reduce memory usage and save incremental results.
+Supports both interactive and batch API modes.
 
 Requirements:
     pip install google-genai
 
 Usage:
+    # Interactive mode (real-time, full price)
     python scripts/inference/run_gemini_batch.py \
         --model gemini-2.0-flash \
         --dataset /path/to/dataset.jsonl \
         --budget 64 \
         --rid gemini_aime2025
 
-    # With custom API key (or set GOOGLE_API_KEY env var)
+    # Batch mode (async, 50% cost savings)
     python scripts/inference/run_gemini_batch.py \
-        --api_key YOUR_API_KEY \
-        --dataset /path/to/dataset.jsonl
+        --model gemini-2.0-flash \
+        --dataset /path/to/dataset.jsonl \
+        --budget 64 \
+        --batch
 
 Output directory structure:
     {output_dir}/
     └── {rid}/
-        ├── qid0_{timestamp}.pkl   (saved after chunk 1)
+        ├── qid0_{timestamp}.pkl
         ├── qid1_{timestamp}.pkl
         └── ...
 """
@@ -297,6 +300,254 @@ def process_gemini_outputs(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+# ============================================================
+# Batch API Functions
+# ============================================================
+
+def create_batch_request(
+    prompt: str,
+    temperature: float,
+    top_p: float,
+    top_k: int,
+    max_tokens: int,
+    logprobs: int,
+) -> Dict[str, Any]:
+    """
+    Create a single batch request in the format expected by Gemini Batch API.
+
+    Per docs: config is at same level as contents, containing generation params.
+    """
+    return {
+        'contents': [{
+            'parts': [{'text': prompt}],
+            'role': 'user'
+        }],
+        'config': {
+            'temperature': temperature,
+            'top_p': top_p,
+            'top_k': top_k,
+            'max_output_tokens': max_tokens,
+            'response_logprobs': True,
+            'logprobs': logprobs,
+        }
+    }
+
+
+def extract_logprobs_from_batch_response(response) -> Tuple[List[float], int]:
+    """Extract logprobs from a batch API response (same structure as interactive)."""
+    return extract_logprobs_from_response(response)
+
+
+def process_batch_response(response, sample_idx: int) -> Dict[str, Any]:
+    """Process a single response from batch API results."""
+    try:
+        # Extract text
+        text = ""
+        finish_reason = "unknown"
+
+        if hasattr(response, 'text'):
+            text = response.text
+        elif hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                text = "".join(part.text for part in candidate.content.parts if hasattr(part, 'text'))
+            if hasattr(candidate, 'finish_reason') and candidate.finish_reason:
+                finish_reason = str(candidate.finish_reason)
+
+        # Extract answer
+        extracted_answer = extract_answer_from_text(text)
+
+        # Extract logprobs
+        confs, num_tokens_from_logprobs = extract_logprobs_from_batch_response(response)
+
+        if num_tokens_from_logprobs > 0:
+            num_tokens = num_tokens_from_logprobs
+        else:
+            num_tokens = int(len(text.split()) * 1.3)
+
+        # Compute min_conf
+        min_conf = float('inf')
+        window_size = 2048
+        if len(confs) >= window_size:
+            for i in range(len(confs) - window_size + 1):
+                window_conf = sum(confs[i:i+window_size]) / window_size
+                min_conf = min(min_conf, window_conf)
+        elif confs:
+            min_conf = sum(confs) / len(confs)
+
+        return {
+            'text': text,
+            'num_tokens': num_tokens,
+            'confs': confs,
+            'min_conf': min_conf,
+            'extracted_answer': extracted_answer,
+            'stop_reason': finish_reason,
+            'sample_idx': sample_idx,
+            'elapsed_time': 0,  # Not available for batch
+            'success': True,
+        }
+    except Exception as e:
+        return {
+            'text': f"ERROR: {str(e)}",
+            'num_tokens': 0,
+            'confs': [],
+            'min_conf': float('inf'),
+            'extracted_answer': "",
+            'stop_reason': 'error',
+            'sample_idx': sample_idx,
+            'elapsed_time': 0,
+            'success': False,
+            'error': str(e),
+        }
+
+
+def run_batch_inference(
+    client: genai.Client,
+    model_name: str,
+    all_requests: List[Dict[str, Any]],
+    request_metadata: List[Dict[str, Any]],
+    logger,
+    poll_interval: int = 30,
+) -> Dict[int, List[Dict[str, Any]]]:
+    """
+    Submit batch job and wait for completion.
+
+    Args:
+        client: Gemini client
+        model_name: Model to use
+        all_requests: List of batch request dicts
+        request_metadata: List of {qid, sample_idx} for each request
+        logger: Logger instance
+        poll_interval: Seconds between status checks
+
+    Returns:
+        Dict mapping qid -> list of trace results
+    """
+    total_requests = len(all_requests)
+
+    # Submit batch job
+    logger.info(f"Submitting batch job with {total_requests} requests...")
+    logger.info(f"Model: models/{model_name}")
+
+    batch_job = client.batches.create(
+        model=f"models/{model_name}",
+        src=all_requests,
+        config={'display_name': f"gemini_inference_{datetime.now().strftime('%Y%m%d_%H%M%S')}"},
+    )
+
+    job_name = batch_job.name
+    logger.info(f"Batch job created: {job_name}")
+    logger.info(f"Waiting for batch job to complete (polling every {poll_interval}s)...")
+
+    # Poll for completion with progress monitoring
+    completed_states = {
+        'JOB_STATE_SUCCEEDED',
+        'JOB_STATE_FAILED',
+        'JOB_STATE_CANCELLED',
+        'JOB_STATE_EXPIRED',
+    }
+
+    state_descriptions = {
+        'JOB_STATE_PENDING': 'Pending (waiting to start)',
+        'JOB_STATE_RUNNING': 'Running (processing requests)',
+        'JOB_STATE_SUCCEEDED': 'Succeeded',
+        'JOB_STATE_FAILED': 'Failed',
+        'JOB_STATE_CANCELLED': 'Cancelled',
+        'JOB_STATE_EXPIRED': 'Expired (job took >48h)',
+    }
+
+    start_time = time_module.time()
+    poll_count = 0
+
+    while True:
+        batch_job = client.batches.get(name=job_name)
+        state_name = batch_job.state.name if hasattr(batch_job.state, 'name') else str(batch_job.state)
+
+        if state_name in completed_states:
+            break
+
+        poll_count += 1
+        elapsed = time_module.time() - start_time
+        elapsed_min = elapsed / 60
+
+        state_desc = state_descriptions.get(state_name, state_name)
+        logger.info(f"[Poll #{poll_count}] Status: {state_desc} | Elapsed: {elapsed_min:.1f}min | Requests: {total_requests}")
+
+        time_module.sleep(poll_interval)
+
+    total_time = time_module.time() - start_time
+    total_min = total_time / 60
+
+    state_desc = state_descriptions.get(state_name, state_name)
+    logger.info(f"Batch job finished: {state_desc}")
+    logger.info(f"Total wait time: {total_min:.1f} minutes ({total_time:.0f}s)")
+
+    # Process results
+    results_by_qid: Dict[int, List[Dict[str, Any]]] = {}
+
+    if state_name == 'JOB_STATE_SUCCEEDED':
+        if hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'inlined_responses'):
+            responses = batch_job.dest.inlined_responses
+            logger.info(f"Processing {len(responses)} responses from batch job...")
+
+            success_count = 0
+            error_count = 0
+
+            for idx, response_wrapper in enumerate(responses):
+                if idx >= len(request_metadata):
+                    break
+
+                meta = request_metadata[idx]
+                qid = meta['qid']
+                sample_idx = meta['sample_idx']
+
+                # Check for error in response wrapper
+                if hasattr(response_wrapper, 'error') and response_wrapper.error:
+                    error_count += 1
+                    trace = {
+                        'text': f"ERROR: {response_wrapper.error}",
+                        'num_tokens': 0,
+                        'confs': [],
+                        'min_conf': float('inf'),
+                        'extracted_answer': "",
+                        'stop_reason': 'error',
+                        'sample_idx': sample_idx,
+                        'elapsed_time': 0,
+                        'success': False,
+                        'error': str(response_wrapper.error),
+                    }
+                else:
+                    # Extract actual response
+                    response = response_wrapper.response if hasattr(response_wrapper, 'response') else response_wrapper
+                    trace = process_batch_response(response, sample_idx)
+                    if trace.get('success', True):
+                        success_count += 1
+                    else:
+                        error_count += 1
+
+                if qid not in results_by_qid:
+                    results_by_qid[qid] = []
+                results_by_qid[qid].append(trace)
+
+                # Progress logging every 100 responses
+                if (idx + 1) % 100 == 0:
+                    logger.info(f"  Processed {idx + 1}/{len(responses)} responses...")
+
+            logger.info(f"Batch results: {success_count} successful, {error_count} errors")
+        else:
+            logger.error("Batch job succeeded but no inlined responses found")
+            # Check if results are in a file
+            if hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'file_name') and batch_job.dest.file_name:
+                logger.error(f"Results may be in file: {batch_job.dest.file_name}")
+                logger.error("File-based results not yet supported in this script")
+    else:
+        logger.error(f"Batch job failed with state: {state_name}")
+        if hasattr(batch_job, 'error') and batch_job.error:
+            logger.error(f"Error details: {batch_job.error}")
+
+    return results_by_qid
+
+
 def main():
     parser = argparse.ArgumentParser(description='Run Gemini API inference')
     parser.add_argument('--model', type=str, default="gemini-2.0-flash",
@@ -321,6 +572,11 @@ def main():
     parser.add_argument('--json_only', action='store_true')
     parser.add_argument('--chunk_size', type=int, default=1)
     parser.add_argument('--no_resume', action='store_true')
+    # Batch API options
+    parser.add_argument('--batch', action='store_true',
+                        help="Use Batch API (50%% cost savings, async processing)")
+    parser.add_argument('--poll_interval', type=int, default=30,
+                        help="Seconds between batch job status checks")
 
     args = parser.parse_args()
 
@@ -386,11 +642,137 @@ def main():
     logger.info(f"Max tokens: {args.max_tokens}")
     logger.info(f"Logprobs: {args.logprobs}")
     logger.info(f"Max parallel workers: {args.max_workers}")
+    logger.info(f"Mode: {'BATCH API (50% cost)' if args.batch else 'Interactive'}")
     logger.info("="*80)
 
-    # Initialize Gemini client and config
+    # Initialize Gemini client
     logger.info("Initializing Gemini client...")
     client = create_gemini_client(api_key)
+    logger.info("Client initialized successfully")
+
+    # ============================================================
+    # BATCH MODE
+    # ============================================================
+    if args.batch:
+        logger.info("\n" + "="*80)
+        logger.info("BATCH MODE - Preparing all requests")
+        logger.info("="*80)
+
+        # Prepare all requests upfront
+        all_requests = []
+        request_metadata = []  # Track qid and sample_idx for each request
+
+        for qid in questions_to_process:
+            question_data = data[qid]
+            question = question_data['question']
+            prompt = prepare_prompt(question, args.model)
+
+            for sample_idx in range(args.budget):
+                req = create_batch_request(
+                    prompt=prompt,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    top_k=args.top_k,
+                    max_tokens=args.max_tokens,
+                    logprobs=args.logprobs,
+                )
+                all_requests.append(req)
+                request_metadata.append({'qid': qid, 'sample_idx': sample_idx})
+
+        total_requests = len(all_requests)
+        logger.info(f"Prepared {total_requests} requests ({num_questions} questions × {args.budget} samples)")
+
+        # Submit and wait for batch job
+        results_by_qid = run_batch_inference(
+            client=client,
+            model_name=args.model,
+            all_requests=all_requests,
+            request_metadata=request_metadata,
+            logger=logger,
+            poll_interval=args.poll_interval,
+        )
+
+        # Process and save results for each question
+        logger.info("\n" + "="*80)
+        logger.info("Processing batch results")
+        logger.info("="*80)
+
+        for qid in questions_to_process:
+            question_data = data[qid]
+            question = question_data['question']
+            ground_truth = str(question_data.get('answer', '')).strip()
+
+            traces = results_by_qid.get(qid, [])
+
+            if not traces:
+                logger.warning(f"No results for qid={qid}")
+                continue
+
+            processed = process_gemini_outputs(traces)
+            successful_traces = [t for t in traces if t.get('success', True)]
+            failed_traces = [t for t in traces if not t.get('success', True)]
+            traces_with_logprobs = [t for t in traces if t.get('confs')]
+            truncated_count = sum(1 for t in traces if 'MAX_TOKENS' in str(t.get('stop_reason', '')))
+            truncation_rate = truncated_count / len(traces) if traces else 0
+
+            voting_results = compute_all_voting_results(processed['traces'])
+
+            result_data = {
+                'question': question,
+                'ground_truth': ground_truth,
+                'qid': qid,
+                'run_id': args.rid,
+                'all_traces': processed['traces'],
+                'total_tokens': processed['total_tokens'],
+                'total_traces_count': len(processed['traces']),
+                'successful_traces_count': len(successful_traces),
+                'failed_traces_count': len(failed_traces),
+                'traces_with_logprobs': len(traces_with_logprobs),
+                'truncated_count': truncated_count,
+                'truncation_rate': truncation_rate,
+                'voting_results': voting_results,
+                'config': {
+                    'model': args.model,
+                    'mode': 'gemini_batch_api',
+                    'budget': args.budget,
+                    'window_size': args.window_size,
+                    'temperature': args.temperature,
+                    'top_p': args.top_p,
+                    'top_k': args.top_k,
+                    'logprobs': args.logprobs,
+                    'max_tokens': args.max_tokens,
+                }
+            }
+
+            voted_answer = "N/A"
+            if 'majority' in voting_results and voting_results['majority']:
+                voted_answer = voting_results['majority']['answer']
+                result_data['voted_answer'] = voted_answer
+                result_data['final_answer'] = voted_answer
+
+            logger.info(f"qid={qid}: voted={voted_answer}, traces={len(traces)}, logprobs={len(traces_with_logprobs)}")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            if not args.json_only:
+                result_filename = f"{run_dir}/qid{qid}_{timestamp}.pkl"
+                with open(result_filename, 'wb') as f:
+                    pickle.dump(result_data, f)
+
+            if args.save_json or args.json_only:
+                json_filename = f"{run_dir}/qid{qid}_{timestamp}.json"
+                save_result_as_json(result_data, json_filename)
+
+        logger.info("\n" + "="*80)
+        logger.info("BATCH MODE COMPLETE")
+        logger.info("="*80)
+        logger.info(f"Results saved to {run_dir}/")
+        logger.info(f"Questions processed: {len(results_by_qid)}")
+        return
+
+    # ============================================================
+    # INTERACTIVE MODE (existing logic)
+    # ============================================================
     config = create_generation_config(
         temperature=args.temperature,
         top_p=args.top_p,
@@ -398,7 +780,6 @@ def main():
         max_tokens=args.max_tokens,
         logprobs=args.logprobs,
     )
-    logger.info("Client initialized successfully")
 
     # Process questions in chunks
     total_generation_time = 0
