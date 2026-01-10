@@ -401,6 +401,30 @@ def process_batch_response(response, sample_idx: int) -> Dict[str, Any]:
         }
 
 
+def submit_single_batch(
+    client: genai.Client,
+    model_name: str,
+    requests: List[Dict[str, Any]],
+    batch_idx: int,
+    total_batches: int,
+    logger,
+) -> str:
+    """Submit a single batch job and return job name."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    display_name = f"gemini_inference_{timestamp}_batch{batch_idx+1}of{total_batches}"
+
+    logger.info(f"Submitting batch {batch_idx+1}/{total_batches} with {len(requests)} requests...")
+
+    batch_job = client.batches.create(
+        model=f"models/{model_name}",
+        src=requests,
+        config={'display_name': display_name},
+    )
+
+    logger.info(f"  Batch {batch_idx+1} created: {batch_job.name}")
+    return batch_job.name
+
+
 def run_batch_inference(
     client: genai.Client,
     model_name: str,
@@ -408,9 +432,13 @@ def run_batch_inference(
     request_metadata: List[Dict[str, Any]],
     logger,
     poll_interval: int = 30,
+    max_batch_size: int = 5000,
 ) -> Dict[int, List[Dict[str, Any]]]:
     """
-    Submit batch job and wait for completion.
+    Submit batch job(s) and wait for completion.
+
+    Automatically splits into multiple batch jobs if requests exceed max_batch_size
+    to stay under the 20MB inline request limit.
 
     Args:
         client: Gemini client
@@ -419,27 +447,51 @@ def run_batch_inference(
         request_metadata: List of {qid, sample_idx} for each request
         logger: Logger instance
         poll_interval: Seconds between status checks
+        max_batch_size: Max requests per batch job (default 5000, ~15MB safe limit)
 
     Returns:
         Dict mapping qid -> list of trace results
     """
     total_requests = len(all_requests)
+    num_batches = (total_requests + max_batch_size - 1) // max_batch_size
 
-    # Submit batch job
-    logger.info(f"Submitting batch job with {total_requests} requests...")
+    logger.info(f"Total requests: {total_requests}")
+    logger.info(f"Max batch size: {max_batch_size}")
+    logger.info(f"Number of batch jobs: {num_batches}")
     logger.info(f"Model: models/{model_name}")
 
-    batch_job = client.batches.create(
-        model=f"models/{model_name}",
-        src=all_requests,
-        config={'display_name': f"gemini_inference_{datetime.now().strftime('%Y%m%d_%H%M%S')}"},
-    )
+    # Split into batches
+    batches = []
+    metadata_batches = []
+    for i in range(num_batches):
+        start_idx = i * max_batch_size
+        end_idx = min(start_idx + max_batch_size, total_requests)
+        batches.append(all_requests[start_idx:end_idx])
+        metadata_batches.append(request_metadata[start_idx:end_idx])
 
-    job_name = batch_job.name
-    logger.info(f"Batch job created: {job_name}")
-    logger.info(f"Waiting for batch job to complete (polling every {poll_interval}s)...")
+    # Submit all batch jobs
+    logger.info("\n" + "="*60)
+    logger.info("SUBMITTING BATCH JOBS")
+    logger.info("="*60)
 
-    # Poll for completion with progress monitoring
+    job_names = []
+    for batch_idx, batch_requests in enumerate(batches):
+        job_name = submit_single_batch(
+            client, model_name, batch_requests, batch_idx, num_batches, logger
+        )
+        job_names.append(job_name)
+        # Small delay between submissions to avoid rate limits
+        if batch_idx < num_batches - 1:
+            time_module.sleep(1)
+
+    logger.info(f"All {num_batches} batch jobs submitted")
+
+    # Wait for all batch jobs to complete (poll all in parallel)
+    logger.info("\n" + "="*60)
+    logger.info("WAITING FOR BATCH JOBS TO COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Polling every {poll_interval}s...")
+
     completed_states = {
         'JOB_STATE_SUCCEEDED',
         'JOB_STATE_FAILED',
@@ -447,103 +499,105 @@ def run_batch_inference(
         'JOB_STATE_EXPIRED',
     }
 
-    state_descriptions = {
-        'JOB_STATE_PENDING': 'Pending (waiting to start)',
-        'JOB_STATE_RUNNING': 'Running (processing requests)',
-        'JOB_STATE_SUCCEEDED': 'Succeeded',
-        'JOB_STATE_FAILED': 'Failed',
-        'JOB_STATE_CANCELLED': 'Cancelled',
-        'JOB_STATE_EXPIRED': 'Expired (job took >48h)',
-    }
-
+    # Track status of each batch
+    batch_status = {job_name: None for job_name in job_names}
+    batch_jobs = {job_name: None for job_name in job_names}
     start_time = time_module.time()
     poll_count = 0
 
+    # Poll all jobs until all complete
     while True:
-        batch_job = client.batches.get(name=job_name)
-        state_name = batch_job.state.name if hasattr(batch_job.state, 'name') else str(batch_job.state)
+        poll_count += 1
+        pending_jobs = [jn for jn, status in batch_status.items() if status is None]
 
-        if state_name in completed_states:
+        if not pending_jobs:
             break
 
-        poll_count += 1
-        elapsed = time_module.time() - start_time
-        elapsed_min = elapsed / 60
+        # Check status of all pending jobs
+        for job_name in pending_jobs:
+            batch_job = client.batches.get(name=job_name)
+            state_name = batch_job.state.name if hasattr(batch_job.state, 'name') else str(batch_job.state)
 
-        state_desc = state_descriptions.get(state_name, state_name)
-        logger.info(f"[Poll #{poll_count}] Status: {state_desc} | Elapsed: {elapsed_min:.1f}min | Requests: {total_requests}")
+            if state_name in completed_states:
+                batch_status[job_name] = state_name
+                batch_jobs[job_name] = batch_job
+                batch_idx = job_names.index(job_name)
+                logger.info(f"  Batch {batch_idx+1}/{num_batches} finished: {state_name}")
 
-        time_module.sleep(poll_interval)
+        # Log progress
+        completed_count = sum(1 for s in batch_status.values() if s is not None)
+        elapsed_min = (time_module.time() - start_time) / 60
 
-    total_time = time_module.time() - start_time
-    total_min = total_time / 60
+        if completed_count < num_batches:
+            logger.info(f"[Poll #{poll_count}] Completed: {completed_count}/{num_batches} | Elapsed: {elapsed_min:.1f}min")
+            time_module.sleep(poll_interval)
 
-    state_desc = state_descriptions.get(state_name, state_name)
-    logger.info(f"Batch job finished: {state_desc}")
-    logger.info(f"Total wait time: {total_min:.1f} minutes ({total_time:.0f}s)")
+    total_wait_time = time_module.time() - start_time
+    logger.info(f"All batch jobs completed in {total_wait_time:.0f}s ({total_wait_time/60:.1f}min)")
 
-    # Process results
+    # Process results from all batches
     results_by_qid: Dict[int, List[Dict[str, Any]]] = {}
+    total_success = 0
+    total_errors = 0
 
-    if state_name == 'JOB_STATE_SUCCEEDED':
-        if hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'inlined_responses'):
-            responses = batch_job.dest.inlined_responses
-            logger.info(f"Processing {len(responses)} responses from batch job...")
+    for batch_idx, (job_name, metadata_batch) in enumerate(zip(job_names, metadata_batches)):
+        state_name = batch_status[job_name]
+        batch_job = batch_jobs[job_name]
 
-            success_count = 0
-            error_count = 0
+        if state_name == 'JOB_STATE_SUCCEEDED':
+            if hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'inlined_responses'):
+                responses = batch_job.dest.inlined_responses
+                logger.info(f"  Processing {len(responses)} responses from batch {batch_idx+1}...")
 
-            for idx, response_wrapper in enumerate(responses):
-                if idx >= len(request_metadata):
-                    break
+                for idx, response_wrapper in enumerate(responses):
+                    if idx >= len(metadata_batch):
+                        break
 
-                meta = request_metadata[idx]
-                qid = meta['qid']
-                sample_idx = meta['sample_idx']
+                    meta = metadata_batch[idx]
+                    qid = meta['qid']
+                    sample_idx = meta['sample_idx']
 
-                # Check for error in response wrapper
-                if hasattr(response_wrapper, 'error') and response_wrapper.error:
-                    error_count += 1
-                    trace = {
-                        'text': f"ERROR: {response_wrapper.error}",
-                        'num_tokens': 0,
-                        'confs': [],
-                        'min_conf': float('inf'),
-                        'extracted_answer': "",
-                        'stop_reason': 'error',
-                        'sample_idx': sample_idx,
-                        'elapsed_time': 0,
-                        'success': False,
-                        'error': str(response_wrapper.error),
-                    }
-                else:
-                    # Extract actual response
-                    response = response_wrapper.response if hasattr(response_wrapper, 'response') else response_wrapper
-                    trace = process_batch_response(response, sample_idx)
-                    if trace.get('success', True):
-                        success_count += 1
+                    # Check for error in response wrapper
+                    if hasattr(response_wrapper, 'error') and response_wrapper.error:
+                        total_errors += 1
+                        trace = {
+                            'text': f"ERROR: {response_wrapper.error}",
+                            'num_tokens': 0,
+                            'confs': [],
+                            'min_conf': float('inf'),
+                            'extracted_answer': "",
+                            'stop_reason': 'error',
+                            'sample_idx': sample_idx,
+                            'elapsed_time': 0,
+                            'success': False,
+                            'error': str(response_wrapper.error),
+                        }
                     else:
-                        error_count += 1
+                        response = response_wrapper.response if hasattr(response_wrapper, 'response') else response_wrapper
+                        trace = process_batch_response(response, sample_idx)
+                        if trace.get('success', True):
+                            total_success += 1
+                        else:
+                            total_errors += 1
 
-                if qid not in results_by_qid:
-                    results_by_qid[qid] = []
-                results_by_qid[qid].append(trace)
-
-                # Progress logging every 100 responses
-                if (idx + 1) % 100 == 0:
-                    logger.info(f"  Processed {idx + 1}/{len(responses)} responses...")
-
-            logger.info(f"Batch results: {success_count} successful, {error_count} errors")
+                    if qid not in results_by_qid:
+                        results_by_qid[qid] = []
+                    results_by_qid[qid].append(trace)
+            else:
+                logger.error(f"Batch {batch_idx+1} succeeded but no inlined responses found")
         else:
-            logger.error("Batch job succeeded but no inlined responses found")
-            # Check if results are in a file
-            if hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'file_name') and batch_job.dest.file_name:
-                logger.error(f"Results may be in file: {batch_job.dest.file_name}")
-                logger.error("File-based results not yet supported in this script")
-    else:
-        logger.error(f"Batch job failed with state: {state_name}")
-        if hasattr(batch_job, 'error') and batch_job.error:
-            logger.error(f"Error details: {batch_job.error}")
+            logger.error(f"Batch {batch_idx+1} failed with state: {state_name}")
+            if batch_job and hasattr(batch_job, 'error') and batch_job.error:
+                logger.error(f"Error details: {batch_job.error}")
+
+    # Summary
+    logger.info("\n" + "="*60)
+    logger.info("BATCH PROCESSING COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Total batches: {num_batches}")
+    logger.info(f"Total responses: {total_success + total_errors}")
+    logger.info(f"Successful: {total_success}, Errors: {total_errors}")
+    logger.info(f"Questions with results: {len(results_by_qid)}")
 
     return results_by_qid
 
@@ -577,6 +631,8 @@ def main():
                         help="Use Batch API (50%% cost savings, async processing)")
     parser.add_argument('--poll_interval', type=int, default=30,
                         help="Seconds between batch job status checks")
+    parser.add_argument('--max_batch_size', type=int, default=5000,
+                        help="Max requests per batch job (default 5000, stay under 20MB limit)")
 
     args = parser.parse_args()
 
@@ -682,7 +738,7 @@ def main():
         total_requests = len(all_requests)
         logger.info(f"Prepared {total_requests} requests ({num_questions} questions × {args.budget} samples)")
 
-        # Submit and wait for batch job
+        # Submit and wait for batch job(s)
         results_by_qid = run_batch_inference(
             client=client,
             model_name=args.model,
@@ -690,6 +746,7 @@ def main():
             request_metadata=request_metadata,
             logger=logger,
             poll_interval=args.poll_interval,
+            max_batch_size=args.max_batch_size,
         )
 
         # Process and save results for each question

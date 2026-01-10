@@ -40,6 +40,7 @@ MODEL=""
 DATASET=""
 BUDGET=""
 USE_BATCH=""
+MAX_BATCH_SIZE=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -58,6 +59,10 @@ while [[ $# -gt 0 ]]; do
         --batch)
             USE_BATCH="--batch"
             shift
+            ;;
+        --max_batch_size)
+            MAX_BATCH_SIZE="--max_batch_size $2"
+            shift 2
             ;;
         --help|-h)
             head -28 "$0" | tail -26
@@ -201,7 +206,7 @@ run_single() {
         --logprobs "${DEFAULT_LOGPROBS}" \
         --output_dir "${OUTPUT_BASE}" \
         --save_json \
-        ${USE_BATCH}
+        ${USE_BATCH} ${MAX_BATCH_SIZE}
 
     echo "========================================="
     echo "${DATASET_SUFFIX} completed!"
@@ -247,7 +252,7 @@ run_debug() {
         --save_json \
         --qid_end 1 \
         --poll_interval 10 \
-        ${USE_BATCH}
+        ${USE_BATCH} ${MAX_BATCH_SIZE}
 
     rm "$TEST_FILE"
 
