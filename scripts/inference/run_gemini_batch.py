@@ -433,6 +433,7 @@ def run_batch_inference(
     logger,
     poll_interval: int = 30,
     max_batch_size: int = 5000,
+    run_dir: str = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
     """
     Submit batch job(s) and wait for completion.
@@ -485,6 +486,15 @@ def run_batch_inference(
             time_module.sleep(1)
 
     logger.info(f"All {num_batches} batch jobs submitted")
+
+    # Save job names for recovery (in case script is killed)
+    if run_dir:
+        jobs_file = os.path.join(run_dir, "batch_jobs.txt")
+        with open(jobs_file, 'w') as f:
+            for jn in job_names:
+                f.write(f"{jn}\n")
+        logger.info(f"Job names saved to: {jobs_file}")
+        logger.info("(Use recover_gemini_batch.py if script is interrupted)")
 
     # Wait for all batch jobs to complete (poll all in parallel)
     logger.info("\n" + "="*60)
@@ -747,6 +757,7 @@ def main():
             logger=logger,
             poll_interval=args.poll_interval,
             max_batch_size=args.max_batch_size,
+            run_dir=run_dir,
         )
 
         # Process and save results for each question
