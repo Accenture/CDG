@@ -139,16 +139,35 @@ def list_batch_jobs(client: genai.Client, limit: int = 20):
     print("="*80)
 
 
-def recover_job(client: genai.Client, job_name: str) -> Tuple[str, List[Dict[str, Any]]]:
+def recover_job(client: genai.Client, job_name: str, max_retries: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Recover results from a single batch job.
 
     Returns:
         (state_name, list of trace dicts)
     """
+    import time
     print(f"\nRecovering job: {job_name}")
 
-    job = client.batches.get(name=job_name)
+    # Retry logic for transient API errors
+    job = None
+    for attempt in range(max_retries):
+        try:
+            job = client.batches.get(name=job_name)
+            break
+        except Exception as e:
+            error_str = str(e)
+            if '503' in error_str or 'UNAVAILABLE' in error_str:
+                wait_time = (attempt + 1) * 5  # 5, 10, 15, 20, 25 seconds
+                print(f"  API unavailable (attempt {attempt+1}/{max_retries}), retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise e
+
+    if job is None:
+        print(f"  Failed to get job after {max_retries} attempts")
+        return "FETCH_ERROR", []
+
     state = job.state.name if hasattr(job.state, 'name') else str(job.state)
 
     print(f"  State: {state}")
