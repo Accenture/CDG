@@ -125,6 +125,9 @@ def discover_runs(results_dir: str, trace_count: int = None,
                 pkl_files = list(item.glob("*.pkl"))
                 if pkl_files:
                     info = parse_run_id(item.name)
+                    # Skip runs that couldn't be properly parsed
+                    if info['model'] is None or info['dataset'] is None:
+                        continue
                     if model_filter and info['model'] != model_filter:
                         continue
                     if dataset_filter and info['dataset'] != dataset_filter:
@@ -145,6 +148,9 @@ def discover_runs(results_dir: str, trace_count: int = None,
                     pkl_files = list(item.glob("*.pkl"))
                     if pkl_files:
                         info = parse_run_id(item.name)
+                        # Skip runs that couldn't be properly parsed
+                        if info['model'] is None or info['dataset'] is None:
+                            continue
                         if info['subset_size'] != trace_count:
                             continue
                         if model_filter and info['model'] != model_filter:
@@ -413,7 +419,14 @@ def create_beta_sweep_figure(aggregated: dict, output_path: str = None,
     # Colors for alpha values
     alpha_colors = {0.5: 'blue', 1.0: 'red', 0.25: 'green', 0.75: 'orange'}
 
-    for idx, ((model, dataset), alpha_data) in enumerate(sorted(subplot_data.items())):
+    def safe_sort_key(item):
+        """Sort key that handles None values."""
+        key = item[0]
+        if isinstance(key, tuple):
+            return tuple('' if x is None else x for x in key)
+        return '' if key is None else key
+
+    for idx, ((model, dataset), alpha_data) in enumerate(sorted(subplot_data.items(), key=safe_sort_key)):
         ax = axes[idx]
 
         for alpha, param_data in sorted(alpha_data.items()):
