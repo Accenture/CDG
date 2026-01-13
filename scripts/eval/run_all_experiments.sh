@@ -72,10 +72,11 @@ run_exp3() {
 
     # Full sweep: all alpha/beta combinations across all models
     # Using 512 traces (full runs) for more accurate tuning
-    echo "--- Running comprehensive beta sweep ---"
+
+    # Sweep 1: Position PCT = 20
+    echo "--- Running beta sweep (position_pct=20) ---"
     echo "Alpha values: 0.5, 1.0"
     echo "Beta range: 10-50 (step 5)"
-    echo "Position PCT: 20"
     echo ""
 
     run_cmd python scripts/eval/eval_hyperparam.py \
@@ -84,8 +85,25 @@ run_exp3() {
         --alphas 0.5,1.0 \
         --beta_min 10 --beta_max 50 --beta_step 5 \
         --position_pct 20 \
-        --output "$OUTPUT_DIR/hyperparam_sweep_${TIMESTAMP}.json" \
-        --figure "$OUTPUT_DIR/hyperparam_sweep_${TIMESTAMP}.png" \
+        --output "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.json" \
+        --figure "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.png" \
+        --no-show \
+        $FAST_FLAG
+
+    # Sweep 2: Position PCT = 10
+    echo "--- Running beta sweep (position_pct=10) ---"
+    echo "Alpha values: 0.5, 1.0"
+    echo "Beta range: 10-50 (step 5)"
+    echo ""
+
+    run_cmd python scripts/eval/eval_hyperparam.py \
+        --sweep beta \
+        --trace_count 512 \
+        --alphas 0.5,1.0 \
+        --beta_min 10 --beta_max 50 --beta_step 5 \
+        --position_pct 10 \
+        --output "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.json" \
+        --figure "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.png" \
         --save-config \
         --no-show \
         $FAST_FLAG
