@@ -139,7 +139,7 @@ def list_batch_jobs(client: genai.Client, limit: int = 20):
     print("="*80)
 
 
-def recover_job(client: genai.Client, job_name: str, max_retries: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+def recover_job(client: genai.Client, job_name: str, max_retries: int = 20) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Recover results from a single batch job.
 
@@ -149,23 +149,30 @@ def recover_job(client: genai.Client, job_name: str, max_retries: int = 5) -> Tu
     import time
     print(f"\nRecovering job: {job_name}")
 
-    # Retry logic for transient API errors
+    # Retry logic for transient API errors - more aggressive for recovering paid results
     job = None
     for attempt in range(max_retries):
         try:
             job = client.batches.get(name=job_name)
             break
         except Exception as e:
-            error_str = str(e)
-            if '503' in error_str or 'UNAVAILABLE' in error_str:
-                wait_time = (attempt + 1) * 5  # 5, 10, 15, 20, 25 seconds
+            error_str = str(e).lower()
+            # Retry on any transient/availability errors
+            if any(err in error_str for err in ['503', 'unavailable', '500', 'internal', 'timeout', 'connection']):
+                wait_time = min(30 + attempt * 10, 120)  # 30s, 40s, 50s, ... up to 120s
                 print(f"  API unavailable (attempt {attempt+1}/{max_retries}), retrying in {wait_time}s...")
                 time.sleep(wait_time)
+            elif '429' in error_str or 'quota' in error_str or 'rate' in error_str:
+                wait_time = min(60 + attempt * 30, 300)  # Rate limit: longer waits
+                print(f"  Rate limited (attempt {attempt+1}/{max_retries}), retrying in {wait_time}s...")
+                time.sleep(wait_time)
             else:
+                print(f"  Error: {e}")
                 raise e
 
     if job is None:
         print(f"  Failed to get job after {max_retries} attempts")
+        print(f"  TIP: Try again later - Google API may be experiencing issues")
         return "FETCH_ERROR", []
 
     state = job.state.name if hasattr(job.state, 'name') else str(job.state)

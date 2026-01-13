@@ -717,12 +717,14 @@ def main():
     logger.info("Client initialized successfully")
 
     # ============================================================
-    # BATCH MODE
+    # BATCH MODE (DISABLED)
     # ============================================================
     if args.batch:
-        logger.info("\n" + "="*80)
-        logger.info("BATCH MODE - Preparing all requests")
-        logger.info("="*80)
+        raise NotImplementedError(
+            "Batch mode is currently disabled due to reliability issues with Google's Batch API. "
+            "Results cannot be reliably recovered from the server after job completion. "
+            "Please use interactive mode instead (remove the --batch flag)."
+        )
 
         # Prepare all requests upfront
         all_requests = []
