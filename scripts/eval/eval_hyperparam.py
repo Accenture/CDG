@@ -339,7 +339,14 @@ def print_results_table(aggregated: dict, param_name: str = 'beta'):
     print(f"HYPERPARAMETER SWEEP: {param_name.upper()}")
     print("=" * 100)
 
-    for key, param_data in sorted(aggregated.items()):
+    def sort_key(item):
+        """Sort key that handles None values by converting to empty string."""
+        key = item[0]
+        if isinstance(key, tuple):
+            return tuple('' if x is None else x for x in key)
+        return '' if key is None else key
+
+    for key, param_data in sorted(aggregated.items(), key=sort_key):
         if len(key) == 3:
             model, dataset, alpha = key
             print(f"\n{model} - {dataset} (alpha={alpha})")
