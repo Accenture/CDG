@@ -13,7 +13,9 @@
 export DATASETS_BASE="/eph/nvme0/datasets"
 
 # Base directory for inference results output
-export OUTPUT_BASE="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results"
+# export OUTPUT_BASE="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results"
+export OUTPUT_BASE="/eph/nvme0/sampling_credit_results"
+
 
 # ============================================================
 # HUGGINGFACE CACHE PATHS
