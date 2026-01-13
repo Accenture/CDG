@@ -200,6 +200,8 @@ def prepare_prompt_token_ids(question: str, encoding, reasoning_effort: str = "h
 def main():
     parser = argparse.ArgumentParser(description='Run GPT-OSS offline inference with Harmony format')
     parser.add_argument('--model', type=str, default="openai/gpt-oss-120b")
+    parser.add_argument('--model_type', type=str, default="gpt-oss",
+                        help="Model type (ignored, for compatibility with run.sh)")
     parser.add_argument('--tensor_parallel_size', type=int, default=1,
                         help="Number of GPUs for tensor parallelism (1 for 120B on single H100)")
     parser.add_argument('--dataset', type=str, required=True)
