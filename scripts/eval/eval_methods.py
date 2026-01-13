@@ -54,11 +54,15 @@ def quick_parse(text: str) -> str:
 
 def equal_func(answer: str, ground_truth: str) -> bool:
     """Check if answer equals ground truth using math_equal."""
-    answer = quick_parse(answer)
+    answer = quick_parse(str(answer))
+    ground_truth = quick_parse(str(ground_truth))
     if len(answer) == 1 and answer.isalpha() and len(ground_truth) == 1 and ground_truth.isalpha():
         return answer.lower() == ground_truth.lower()
     else:
-        return math_equal(answer, ground_truth)
+        try:
+            return math_equal(answer, ground_truth)
+        except:
+            return str(answer).strip() == str(ground_truth).strip()
 
 
 # ============================================================
