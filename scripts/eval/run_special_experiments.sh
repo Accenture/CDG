@@ -1,0 +1,220 @@
+#!/bin/bash
+# Special experiments with manually tuned parameters
+#
+# Exp 1-2: Model-specific tuned parameters (best found manually)
+# Exp 1-3-1: General params (alpha=0.5, beta=10, position_pct=20) for all models
+# Exp 1-3-2: General params (alpha=0.5, beta=10, position_pct=10) for all models
+#
+# Usage:
+#   ./run_special_experiments.sh                    # Run all special experiments
+#   ./run_special_experiments.sh --exp 1-2         # Run only Exp 1-2
+#   ./run_special_experiments.sh --exp 1-3-1       # Run only Exp 1-3-1
+#   ./run_special_experiments.sh --exp 1-3-2       # Run only Exp 1-3-2
+#   ./run_special_experiments.sh --dry-run         # Show commands without running
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/../.."
+
+# Output directory for results
+OUTPUT_DIR="results/eval_outputs/special"
+mkdir -p "$OUTPUT_DIR"
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Parse arguments
+DRY_RUN=false
+RUN_EXP=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run) DRY_RUN=true; shift ;;
+        --exp) RUN_EXP="$2"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+run_cmd() {
+    echo "=========================================="
+    echo "Running: $@"
+    echo "=========================================="
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Would execute: $@"
+    else
+        "$@"
+    fi
+    echo ""
+}
+
+# ============================================================
+# Exp 1-2: Model-Specific Tuned Parameters
+# ============================================================
+run_exp_1_2() {
+    echo ""
+    echo "########################################"
+    echo "# EXP 1-2: MODEL-SPECIFIC TUNED PARAMS"
+    echo "########################################"
+    echo ""
+    echo "Parameters per model:"
+    echo "  DeepSeek:  alpha=0.5, beta=10, position_pct=20"
+    echo "  Gptoss:    alpha=0.5, beta=10, position_pct=10 (Bruno: beta=20, pos=20)"
+    echo "  Gemma3:    alpha=0.5, beta=5,  position_pct=10 AND 20"
+    echo "  Qwen/Qwq:  alpha=0.5, beta=10, position_pct=20"
+    echo ""
+
+    OUTPUT_FILE="$OUTPUT_DIR/exp1-2_model_specific_${TIMESTAMP}.txt"
+
+    {
+        echo "=============================================="
+        echo "EXP 1-2: MODEL-SPECIFIC TUNED PARAMETERS"
+        echo "Timestamp: $TIMESTAMP"
+        echo "=============================================="
+        echo ""
+
+        # DeepSeek: alpha=0.5, beta=10, position_pct=20
+        echo "--- DeepSeek (alpha=0.5, beta=10, pos=20) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*deepseek*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 20
+
+        # Gptoss (non-Bruno): alpha=0.5, beta=10, position_pct=10
+        echo "--- Gptoss non-Bruno (alpha=0.5, beta=10, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*gptoss*aime*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 10
+
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*gptoss*hmmt*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 10
+
+        # Gptoss Bruno: alpha=0.5, beta=20, position_pct=20
+        echo "--- Gptoss Bruno (alpha=0.5, beta=20, pos=20) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*gptoss*bruno*" \
+            --method cdg \
+            --alpha 0.5 --beta 20 --position_pct 20
+
+        # Gemma3 with position_pct=10
+        echo "--- Gemma3 (alpha=0.5, beta=5, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*gemma3*" \
+            --method cdg \
+            --alpha 0.5 --beta 5 --position_pct 10
+
+        # Gemma3 with position_pct=20 (for comparison)
+        echo "--- Gemma3 (alpha=0.5, beta=5, pos=20) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*gemma3*" \
+            --method cdg \
+            --alpha 0.5 --beta 5 --position_pct 20
+
+        # Qwen/Qwq: alpha=0.5, beta=10, position_pct=20
+        echo "--- Qwen (alpha=0.5, beta=10, pos=20) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "*qwen*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 20
+
+    } 2>&1 | tee "$OUTPUT_FILE"
+
+    echo "Exp 1-2 complete. Results saved to: $OUTPUT_FILE"
+}
+
+# ============================================================
+# Exp 1-3-1: General Params (position_pct=20)
+# ============================================================
+run_exp_1_3_1() {
+    echo ""
+    echo "########################################"
+    echo "# EXP 1-3-1: GENERAL PARAMS (pos=20)"
+    echo "########################################"
+    echo ""
+    echo "All models: alpha=0.5, beta=10, position_pct=20"
+    echo ""
+
+    OUTPUT_FILE="$OUTPUT_DIR/exp1-3-1_general_pos20_${TIMESTAMP}.txt"
+
+    {
+        echo "=============================================="
+        echo "EXP 1-3-1: GENERAL PARAMS (position_pct=20)"
+        echo "All models: alpha=0.5, beta=10, position_pct=20"
+        echo "Timestamp: $TIMESTAMP"
+        echo "=============================================="
+        echo ""
+
+        run_cmd python scripts/eval/eval_voting.py \
+            --all --all-methods \
+            --alpha 0.5 --beta 10 --position_pct 20
+
+    } 2>&1 | tee "$OUTPUT_FILE"
+
+    echo "Exp 1-3-1 complete. Results saved to: $OUTPUT_FILE"
+}
+
+# ============================================================
+# Exp 1-3-2: General Params (position_pct=10)
+# ============================================================
+run_exp_1_3_2() {
+    echo ""
+    echo "########################################"
+    echo "# EXP 1-3-2: GENERAL PARAMS (pos=10)"
+    echo "########################################"
+    echo ""
+    echo "All models: alpha=0.5, beta=10, position_pct=10"
+    echo ""
+
+    OUTPUT_FILE="$OUTPUT_DIR/exp1-3-2_general_pos10_${TIMESTAMP}.txt"
+
+    {
+        echo "=============================================="
+        echo "EXP 1-3-2: GENERAL PARAMS (position_pct=10)"
+        echo "All models: alpha=0.5, beta=10, position_pct=10"
+        echo "Timestamp: $TIMESTAMP"
+        echo "=============================================="
+        echo ""
+
+        run_cmd python scripts/eval/eval_voting.py \
+            --all --all-methods \
+            --alpha 0.5 --beta 10 --position_pct 10
+
+    } 2>&1 | tee "$OUTPUT_FILE"
+
+    echo "Exp 1-3-2 complete. Results saved to: $OUTPUT_FILE"
+}
+
+# ============================================================
+# Main execution
+# ============================================================
+
+echo "========================================"
+echo "SPECIAL EXPERIMENTS RUNNER"
+echo "========================================"
+echo "Timestamp: $TIMESTAMP"
+echo "Output dir: $OUTPUT_DIR"
+echo ""
+
+if [[ -n "$RUN_EXP" ]]; then
+    case $RUN_EXP in
+        1-2) run_exp_1_2 ;;
+        1-3-1) run_exp_1_3_1 ;;
+        1-3-2) run_exp_1_3_2 ;;
+        *) echo "Unknown experiment: $RUN_EXP (valid: 1-2, 1-3-1, 1-3-2)"; exit 1 ;;
+    esac
+else
+    # Run all special experiments
+    echo "Running all special experiments: 1-2, 1-3-1, 1-3-2"
+    echo ""
+    run_exp_1_2
+    run_exp_1_3_1
+    run_exp_1_3_2
+fi
+
+echo ""
+echo "========================================"
+echo "ALL SPECIAL EXPERIMENTS COMPLETE"
+echo "========================================"
+echo "Results saved to: $OUTPUT_DIR"
+ls -la "$OUTPUT_DIR"

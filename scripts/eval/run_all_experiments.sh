@@ -76,14 +76,14 @@ run_exp3() {
     # Sweep 1: Position PCT = 20
     echo "--- Running beta sweep (position_pct=20) ---"
     echo "Alpha values: 0.5, 1.0"
-    echo "Beta range: 10-50 (step 5)"
+    echo "Beta values: 1,5,10,15,20,25,30"
     echo ""
 
     run_cmd python scripts/eval/eval_hyperparam.py \
         --sweep beta \
         --trace_count 512 \
         --alphas 0.5,1.0 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
+        --betas 1,5,10,15,20,25,30 \
         --position_pct 20 \
         --output "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.json" \
         --figure "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.png" \
@@ -93,14 +93,14 @@ run_exp3() {
     # Sweep 2: Position PCT = 10
     echo "--- Running beta sweep (position_pct=10) ---"
     echo "Alpha values: 0.5, 1.0"
-    echo "Beta range: 10-50 (step 5)"
+    echo "Beta values: 1,5,10,15,20,25,30"
     echo ""
 
     run_cmd python scripts/eval/eval_hyperparam.py \
         --sweep beta \
         --trace_count 512 \
         --alphas 0.5,1.0 \
-        --beta_min 10 --beta_max 50 --beta_step 5 \
+        --betas 1,5,10,15,20,25,30 \
         --position_pct 10 \
         --output "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.json" \
         --figure "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.png" \

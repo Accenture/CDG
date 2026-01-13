@@ -247,19 +247,40 @@ def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
 
     print(f"Running {len(tasks)} evaluations ({len(runs)} runs x {len(alpha_values)} alphas x {len(beta_values)} betas)...")
 
+    # Determine number of workers (conservative for SMB drives)
+    if num_workers is None:
+        import multiprocessing as mp
+        num_workers = min(4, mp.cpu_count(), len(tasks))
+
     results = []
     cached_count = 0
 
-    # Sequential processing with cache support
-    for i, (run, alpha, beta, pct) in enumerate(tasks):
-        result = evaluate_with_params(run, alpha, beta, pct, cache=cache)
-        if result:
-            if result.get('cached'):
-                cached_count += 1
-            results.append(result)
+    def process_task(task):
+        run, alpha, beta, pct = task
+        return evaluate_with_params(run, alpha, beta, pct, cache=cache)
 
-        if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
-            print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
+    if num_workers > 1 and len(tasks) > 1:
+        # Parallel processing
+        print(f"Using {num_workers} parallel workers...")
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = list(executor.map(process_task, tasks))
+            for i, result in enumerate(futures):
+                if result:
+                    if result.get('cached'):
+                        cached_count += 1
+                    results.append(result)
+                if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
+                    print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
+    else:
+        # Sequential processing
+        for i, task in enumerate(tasks):
+            result = process_task(task)
+            if result:
+                if result.get('cached'):
+                    cached_count += 1
+                results.append(result)
+            if (i + 1) % 20 == 0 or (i + 1) == len(tasks):
+                print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
 
     if cached_count > 0:
         print(f"Loaded {cached_count}/{len(tasks)} results from cache")
@@ -269,7 +290,7 @@ def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
 
 def sweep_position_pct(runs: list, position_pct_values: list = None,
                        alpha: float = 0.5, beta: float = 10,
-                       cache: EvalCache = None) -> list:
+                       num_workers: int = None, cache: EvalCache = None) -> list:
     """Sweep over position_pct values."""
     if position_pct_values is None:
         position_pct_values = POSITION_PCT_VALUES
@@ -281,18 +302,38 @@ def sweep_position_pct(runs: list, position_pct_values: list = None,
 
     print(f"Running {len(tasks)} evaluations...")
 
+    # Determine number of workers (conservative for SMB drives)
+    if num_workers is None:
+        import multiprocessing as mp
+        num_workers = min(4, mp.cpu_count(), len(tasks))
+
     results = []
     cached_count = 0
 
-    for i, (run, a, b, pct) in enumerate(tasks):
-        result = evaluate_with_params(run, a, b, pct, cache=cache)
-        if result:
-            if result.get('cached'):
-                cached_count += 1
-            results.append(result)
+    def process_task(task):
+        run, a, b, pct = task
+        return evaluate_with_params(run, a, b, pct, cache=cache)
 
-        if (i + 1) % 10 == 0 or (i + 1) == len(tasks):
-            print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
+    if num_workers > 1 and len(tasks) > 1:
+        print(f"Using {num_workers} parallel workers...")
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = list(executor.map(process_task, tasks))
+            for i, result in enumerate(futures):
+                if result:
+                    if result.get('cached'):
+                        cached_count += 1
+                    results.append(result)
+                if (i + 1) % 10 == 0 or (i + 1) == len(tasks):
+                    print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
+    else:
+        for i, task in enumerate(tasks):
+            result = process_task(task)
+            if result:
+                if result.get('cached'):
+                    cached_count += 1
+                results.append(result)
+            if (i + 1) % 10 == 0 or (i + 1) == len(tasks):
+                print(f"  Progress: {i+1}/{len(tasks)} (cached: {cached_count})")
 
     return results
 
@@ -504,6 +545,8 @@ Examples:
                         help='Parameter to sweep (required unless --show-config)')
     parser.add_argument('--trace_count', type=int, default=512,
                         help='Trace count to use (default: 512, use 256 for faster tuning)')
+    parser.add_argument('--workers', type=int, default=4,
+                        help='Number of parallel workers (default: 4, increase if using local SSD)')
     parser.add_argument('--model', type=str, default=None,
                         help='Filter by model name')
     parser.add_argument('--dataset', type=str, default=None,
@@ -512,6 +555,8 @@ Examples:
     # Parameter ranges
     parser.add_argument('--alphas', type=str, default='0.5,1.0',
                         help='Comma-separated alpha values (default: 0.5,1.0)')
+    parser.add_argument('--betas', type=str, default=None,
+                        help='Comma-separated beta values (e.g., 1,5,10,15,20,25,30). Overrides beta_min/max/step if provided.')
     parser.add_argument('--beta_min', type=int, default=10,
                         help='Min beta value (default: 10)')
     parser.add_argument('--beta_max', type=int, default=50,
@@ -584,8 +629,11 @@ Examples:
     # Parse alpha values
     alpha_values = [float(a.strip()) for a in args.alphas.split(',')]
 
-    # Build beta range
-    beta_values = list(range(args.beta_min, args.beta_max + 1, args.beta_step))
+    # Build beta values - use --betas if provided, otherwise use range
+    if args.betas:
+        beta_values = [int(b.strip()) for b in args.betas.split(',')]
+    else:
+        beta_values = list(range(args.beta_min, args.beta_max + 1, args.beta_step))
 
     print(f"Hyperparameter Sweep: {args.sweep}")
     print(f"Trace count: {args.trace_count}")
@@ -634,6 +682,7 @@ Examples:
             alpha_values=alpha_values,
             beta_values=beta_values,
             position_pct=args.position_pct,
+            num_workers=args.workers,
             cache=cache
         )
         aggregated = aggregate_results(results, group_by='beta')
@@ -653,6 +702,7 @@ Examples:
             position_pct_values=POSITION_PCT_VALUES,
             alpha=alpha_values[0],
             beta=beta_values[len(beta_values)//2],  # middle beta
+            num_workers=args.workers,
             cache=cache
         )
         aggregated = aggregate_results(results, group_by='position_pct')
