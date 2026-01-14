@@ -46,13 +46,13 @@ echo ""
 
 # Sync SMB -> NVMe (copy new/updated files from SMB to NVMe)
 echo ">>> Syncing SMB -> NVMe..."
-rsync -a --itemize-changes --stats --size-only $DRY_RUN "$SMB_PATH" "$NVME_PATH"
+rsync -rlD --itemize-changes --stats --size-only $DRY_RUN "$SMB_PATH" "$NVME_PATH" | grep -v '^\.'
 
 echo ""
 
 # Sync NVMe -> SMB (copy new/updated files from NVMe to SMB)
 echo ">>> Syncing NVMe -> SMB..."
-rsync -a --itemize-changes --stats --size-only $DRY_RUN "$NVME_PATH" "$SMB_PATH"
+rsync -rlD --itemize-changes --stats --size-only $DRY_RUN "$NVME_PATH" "$SMB_PATH" | grep -v '^\.'
 
 echo ""
 echo "=== Sync complete ==="
