@@ -22,13 +22,13 @@ echo ""
 
 # Sync SMB -> NVMe (copy new/updated files from SMB to NVMe)
 echo ">>> Syncing SMB -> NVMe..."
-rsync -av --stats $DRY_RUN --update "$SMB_PATH" "$NVME_PATH"
+rsync -a --itemize-changes --stats $DRY_RUN --update "$SMB_PATH" "$NVME_PATH"
 
 echo ""
 
 # Sync NVMe -> SMB (copy new/updated files from NVMe to SMB)
 echo ">>> Syncing NVMe -> SMB..."
-rsync -av --stats $DRY_RUN --update "$NVME_PATH" "$SMB_PATH"
+rsync -a --itemize-changes --stats $DRY_RUN --update "$NVME_PATH" "$SMB_PATH"
 
 echo ""
 echo "=== Sync complete ==="
