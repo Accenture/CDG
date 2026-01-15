@@ -4,15 +4,20 @@
 # Exp 1-2: Model-specific tuned parameters (best found manually)
 # Exp 1-3-1: General params (alpha=0.5, beta=10, position_pct=20) for all models
 # Exp 1-3-2: General params (alpha=0.5, beta=10, position_pct=10) for all models
+# Exp 1-4: Beta=0 ablation (no gradient signal, expected worse results)
 #
 # Usage:
 #   ./run_special_experiments.sh                    # Run all special experiments
 #   ./run_special_experiments.sh --exp 1-2         # Run only Exp 1-2
 #   ./run_special_experiments.sh --exp 1-3-1       # Run only Exp 1-3-1
 #   ./run_special_experiments.sh --exp 1-3-2       # Run only Exp 1-3-2
+#   ./run_special_experiments.sh --exp 1-4         # Run only Exp 1-4 (beta=0 ablation)
 #   ./run_special_experiments.sh --dry-run         # Show commands without running
 
 set -e
+
+# Unbuffered Python output (so tee shows results in real-time)
+export PYTHONUNBUFFERED=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../.."
@@ -197,6 +202,50 @@ run_exp_1_3_2() {
 }
 
 # ============================================================
+# Exp 1-4: Beta=0 Ablation (no gradient signal)
+# ============================================================
+# This removes the gradient component, leaving only count-dampened mean confidence
+# Expected: worse results than with beta > 0
+run_exp_1_4() {
+    echo ""
+    echo "########################################"
+    echo "# EXP 1-4: BETA=0 ABLATION"
+    echo "########################################"
+    echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
+    echo "Testing: alpha=0.5, beta=0, position_pct=10 AND 20"
+    echo "Expected: worse results (no gradient signal)"
+    echo ""
+
+    OUTPUT_FILE="$OUTPUT_DIR/exp1-4_beta0_ablation_${TIMESTAMP}.txt"
+
+    {
+        echo "=============================================="
+        echo "EXP 1-4: BETA=0 ABLATION (no gradient signal)"
+        echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
+        echo "Expected: worse results without gradient component"
+        echo "Timestamp: $TIMESTAMP"
+        echo "=============================================="
+        echo ""
+
+        # Beta=0, position_pct=10
+        echo "--- Beta=0, position_pct=10 ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --patterns "$MODEL_PATTERNS" --all-methods \
+            --alpha 0.5 --beta 0 --position_pct 10
+
+        # Beta=0, position_pct=20
+        echo "--- Beta=0, position_pct=20 ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --patterns "$MODEL_PATTERNS" --all-methods \
+            --alpha 0.5 --beta 0 --position_pct 20
+
+    } 2>&1 | tee "$OUTPUT_FILE"
+
+    echo "Exp 1-4 complete. Results saved to: $OUTPUT_FILE"
+}
+
+# ============================================================
 # Main execution
 # ============================================================
 
@@ -212,15 +261,17 @@ if [[ -n "$RUN_EXP" ]]; then
         1-2) run_exp_1_2 ;;
         1-3-1) run_exp_1_3_1 ;;
         1-3-2) run_exp_1_3_2 ;;
-        *) echo "Unknown experiment: $RUN_EXP (valid: 1-2, 1-3-1, 1-3-2)"; exit 1 ;;
+        1-4) run_exp_1_4 ;;
+        *) echo "Unknown experiment: $RUN_EXP (valid: 1-2, 1-3-1, 1-3-2, 1-4)"; exit 1 ;;
     esac
 else
     # Run all special experiments
-    echo "Running all special experiments: 1-2, 1-3-1, 1-3-2"
+    echo "Running all special experiments: 1-2, 1-3-1, 1-3-2, 1-4"
     echo ""
     run_exp_1_2
     run_exp_1_3_1
     run_exp_1_3_2
+    run_exp_1_4
 fi
 
 echo ""
