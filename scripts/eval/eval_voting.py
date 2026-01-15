@@ -209,14 +209,15 @@ def evaluate_all_runs(results_dir: str, methods: list, params: dict,
                     continue
             tasks_to_run.append((run_id, results_dir, method, params, hyperparam_config))
 
-    if cached_count > 0:
-        print(f"Loaded {cached_count}/{total_tasks} results from cache")
+    # Display cache status prominently
+    need_compute = len(tasks_to_run)
+    print(f"Cache: {cached_count}/{total_tasks} found, need to compute {need_compute}")
 
     if not tasks_to_run:
         print("All results cached, nothing to compute")
         return dict(all_results)
 
-    print(f"Computing {len(tasks_to_run)} remaining tasks...")
+    print(f"Computing {need_compute} remaining tasks...")
 
     # Cap workers to avoid thread exhaustion (each worker loads ~30 pkl files sequentially)
     if num_workers is None:
