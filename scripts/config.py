@@ -36,8 +36,8 @@ class PathConfig:
     DATASETS_BASE = os.environ.get("DATASETS_BASE", "/eph/nvme0/datasets")
 
     # Base directory for inference results output
-    OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
-    # OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/eph/nvme0/sampling_credit_results")
+    # OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute/code/Users/minghao.a.liu/sampling_credit_results")
+    OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/eph/nvme0/sampling_credit_results")
 
 
     # ============================================================
