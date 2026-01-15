@@ -25,6 +25,7 @@ import os
 import sys
 import re
 import argparse
+import fnmatch
 from collections import defaultdict
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -113,9 +114,14 @@ def parse_run_id(run_id: str) -> dict:
     return result
 
 
-def discover_runs(results_dir: str, subset_dir: str = None) -> dict:
+def discover_runs(results_dir: str, subset_dir: str = None, patterns: str = None) -> dict:
     """
     Discover all runs including subsampled versions.
+
+    Args:
+        results_dir: Base results directory
+        subset_dir: Subdirectory for subset runs
+        patterns: Comma-separated patterns to filter runs (e.g., "deepseek8b*,qwq32b*")
 
     Returns:
         dict: {
@@ -129,11 +135,20 @@ def discover_runs(results_dir: str, subset_dir: str = None) -> dict:
     if not base.exists():
         return runs
 
+    # Parse patterns into a list
+    pattern_list = []
+    if patterns:
+        pattern_list = [p.strip() for p in patterns.split(',')]
+
     # Find full runs in base directory
     for item in base.iterdir():
-        if item.is_dir() and item.name not in ['subset_trace', '__pycache__']:
+        if item.is_dir() and item.name not in ['subset_trace', '__pycache__', '.eval_cache']:
             pkl_files = list(item.glob("*.pkl"))
             if pkl_files:
+                # Check patterns filter
+                if pattern_list:
+                    if not any(fnmatch.fnmatch(item.name, p) for p in pattern_list):
+                        continue
                 runs['full'].append(item.name)
 
     # Find subset runs
@@ -143,6 +158,10 @@ def discover_runs(results_dir: str, subset_dir: str = None) -> dict:
             if item.is_dir():
                 pkl_files = list(item.glob("*.pkl"))
                 if pkl_files:
+                    # Check patterns filter
+                    if pattern_list:
+                        if not any(fnmatch.fnmatch(item.name, p) for p in pattern_list):
+                            continue
                     runs['subset'].append(item.name)
 
     return runs
@@ -182,8 +201,8 @@ def evaluate_single_run(args: tuple) -> tuple:
 
 def evaluate_all_runs(results_dir: str, methods: list = None,
                       model_filter: str = None, dataset_filter: str = None,
-                      num_workers: int = None, params: dict = None,
-                      cache: EvalCache = None,
+                      patterns: str = None, num_workers: int = None,
+                      params: dict = None, cache: EvalCache = None,
                       hyperparam_config: HyperparamConfig = None) -> dict:
     """
     Evaluate all runs with specified methods.
@@ -193,6 +212,7 @@ def evaluate_all_runs(results_dir: str, methods: list = None,
         methods: List of methods to evaluate (None = all)
         model_filter: Filter by model name
         dataset_filter: Filter by dataset name
+        patterns: Comma-separated patterns to filter runs
         num_workers: Max parallel workers (capped at 8 to avoid thread issues)
         params: Method parameters dict
         cache: EvalCache for caching results
@@ -207,7 +227,7 @@ def evaluate_all_runs(results_dir: str, methods: list = None,
     if params is None:
         params = DEFAULT_PARAMS.copy()
 
-    runs = discover_runs(results_dir)
+    runs = discover_runs(results_dir, patterns=patterns)
     all_run_ids = runs['full'] + runs['subset']
 
     # Apply filters
@@ -506,6 +526,8 @@ def main():
                         help='Filter by model name')
     parser.add_argument('--dataset', type=str, default=None,
                         help='Filter by dataset name')
+    parser.add_argument('--patterns', type=str, default=None,
+                        help='Filter runs by multiple comma-separated patterns (e.g., "deepseek8b*,qwq32b*")')
     parser.add_argument('--methods', type=str, default=None,
                         help='Comma-separated list of methods (default: all)')
     parser.add_argument('--output', '-o', type=str, default=None,
@@ -584,7 +606,7 @@ def main():
 
     # List mode
     if args.list:
-        runs = discover_runs(args.results_dir)
+        runs = discover_runs(args.results_dir, patterns=args.patterns)
         print(f"Full runs ({len(runs['full'])}):")
         for run in sorted(runs['full']):
             info = parse_run_id(run)
@@ -617,6 +639,7 @@ def main():
         methods=methods,
         model_filter=args.model,
         dataset_filter=args.dataset,
+        patterns=args.patterns,
         params=params,
         cache=cache,
         hyperparam_config=hp_config

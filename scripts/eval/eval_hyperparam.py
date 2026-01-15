@@ -26,6 +26,7 @@ import os
 import sys
 import json
 import argparse
+import fnmatch
 from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
@@ -102,7 +103,8 @@ def parse_run_id(run_id: str) -> dict:
 
 
 def discover_runs(results_dir: str, trace_count: int = None,
-                  model_filter: str = None, dataset_filter: str = None) -> list:
+                  model_filter: str = None, dataset_filter: str = None,
+                  patterns: str = None) -> list:
     """
     Discover runs matching criteria.
 
@@ -111,6 +113,7 @@ def discover_runs(results_dir: str, trace_count: int = None,
         trace_count: If specified, find subset runs with this trace count (or full 512 runs)
         model_filter: Filter by model name
         dataset_filter: Filter by dataset name
+        patterns: Comma-separated patterns to filter runs (e.g., "deepseek8b*,qwq32b*")
     """
     runs = []
     base = Path(results_dir)
@@ -118,10 +121,15 @@ def discover_runs(results_dir: str, trace_count: int = None,
     if not base.exists():
         return runs
 
+    # Parse patterns into a list
+    pattern_list = []
+    if patterns:
+        pattern_list = [p.strip() for p in patterns.split(',')]
+
     # Check full runs (512 traces)
     if trace_count is None or trace_count == 512:
         for item in base.iterdir():
-            if item.is_dir() and item.name not in ['subset_trace', '__pycache__']:
+            if item.is_dir() and item.name not in ['subset_trace', '__pycache__', '.eval_cache']:
                 pkl_files = list(item.glob("*.pkl"))
                 if pkl_files:
                     info = parse_run_id(item.name)
@@ -132,6 +140,10 @@ def discover_runs(results_dir: str, trace_count: int = None,
                         continue
                     if dataset_filter and info['dataset'] != dataset_filter:
                         continue
+                    # Check patterns filter
+                    if pattern_list:
+                        if not any(fnmatch.fnmatch(item.name, p) for p in pattern_list):
+                            continue
                     runs.append({
                         'run_id': item.name,
                         'path': str(item),
@@ -157,6 +169,10 @@ def discover_runs(results_dir: str, trace_count: int = None,
                             continue
                         if dataset_filter and info['dataset'] != dataset_filter:
                             continue
+                        # Check patterns filter
+                        if pattern_list:
+                            if not any(fnmatch.fnmatch(item.name, p) for p in pattern_list):
+                                continue
                         runs.append({
                             'run_id': item.name,
                             'path': str(item),
@@ -551,6 +567,8 @@ Examples:
                         help='Filter by model name')
     parser.add_argument('--dataset', type=str, default=None,
                         help='Filter by dataset name')
+    parser.add_argument('--patterns', type=str, default=None,
+                        help='Filter runs by multiple comma-separated patterns (e.g., "deepseek8b*,qwq32b*")')
 
     # Parameter ranges
     parser.add_argument('--alphas', type=str, default='0.5,1.0',
@@ -648,7 +666,8 @@ Examples:
         args.results_dir,
         trace_count=args.trace_count,
         model_filter=args.model,
-        dataset_filter=args.dataset
+        dataset_filter=args.dataset,
+        patterns=args.patterns
     )
 
     if not runs:

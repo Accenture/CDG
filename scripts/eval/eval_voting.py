@@ -86,20 +86,35 @@ def parse_run_id(run_id: str) -> dict:
     return {'model': run_id, 'dataset': '?', 'budget': '?', 'run_id': run_id}
 
 
-def discover_runs(results_dir: str, pattern: str = None) -> list:
-    """Discover all run directories."""
+def discover_runs(results_dir: str, pattern: str = None, patterns: str = None) -> list:
+    """Discover all run directories.
+
+    Args:
+        results_dir: Base directory for results
+        pattern: Single pattern to filter runs (e.g., "qwen32b_*")
+        patterns: Comma-separated patterns to filter runs (e.g., "deepseek8b*,qwq32b*")
+    """
     runs = []
     base = Path(results_dir)
 
     if not base.exists():
         return runs
 
+    # Parse patterns into a list
+    pattern_list = []
+    if pattern:
+        pattern_list.append(pattern)
+    if patterns:
+        pattern_list.extend([p.strip() for p in patterns.split(',')])
+
     for item in base.iterdir():
-        if item.is_dir() and item.name not in ['subset_trace', '__pycache__']:
+        if item.is_dir() and item.name not in ['subset_trace', '__pycache__', '.eval_cache']:
             pkl_files = list(item.glob("*.pkl"))
             if pkl_files:
-                if pattern and not fnmatch.fnmatch(item.name, pattern):
-                    continue
+                # If patterns specified, check if run matches ANY pattern
+                if pattern_list:
+                    if not any(fnmatch.fnmatch(item.name, p) for p in pattern_list):
+                        continue
                 runs.append(item.name)
 
     return sorted(runs)
@@ -138,7 +153,8 @@ def evaluate_single_run(args: tuple) -> tuple:
 
 
 def evaluate_all_runs(results_dir: str, methods: list, params: dict,
-                      pattern: str = None, num_workers: int = None,
+                      pattern: str = None, patterns: str = None,
+                      num_workers: int = None,
                       cache: EvalCache = None,
                       hyperparam_config: HyperparamConfig = None) -> dict:
     """
@@ -151,6 +167,7 @@ def evaluate_all_runs(results_dir: str, methods: list, params: dict,
         methods: List of method names to evaluate
         params: Parameters dict for evaluation methods
         pattern: Optional glob pattern to filter runs
+        patterns: Optional comma-separated patterns to filter runs
         num_workers: Max parallel workers (None = auto, capped at 8 to avoid thread issues)
         cache: EvalCache instance for caching results
         hyperparam_config: HyperparamConfig for model-specific params (optional)
@@ -158,7 +175,7 @@ def evaluate_all_runs(results_dir: str, methods: list, params: dict,
     Returns:
         {run_id: {method: {'info': ..., 'result': ...}, ...}, ...}
     """
-    runs = discover_runs(results_dir, pattern)
+    runs = discover_runs(results_dir, pattern, patterns)
 
     if not runs:
         print(f"No runs found in {results_dir}")
@@ -390,6 +407,8 @@ Examples:
                         help='Evaluate all runs')
     parser.add_argument('--pattern', type=str, default=None,
                         help='Filter runs by pattern (e.g., "qwen32b_*", "*aime2025*")')
+    parser.add_argument('--patterns', type=str, default=None,
+                        help='Filter runs by multiple comma-separated patterns (e.g., "deepseek8b*,qwq32b*")')
     parser.add_argument('--list', action='store_true',
                         help='List available runs without evaluating')
 
@@ -491,7 +510,7 @@ Examples:
 
     # List mode
     if args.list:
-        runs = discover_runs(args.results_dir, args.pattern)
+        runs = discover_runs(args.results_dir, args.pattern, args.patterns)
         print(f"Available runs in {args.results_dir}:")
         print(f"\n{'Run ID':<45} {'Model':<15} {'Dataset':<10}")
         print("-" * 70)
@@ -502,8 +521,8 @@ Examples:
         print(f"\nAvailable methods: {', '.join(get_available_methods())}")
         return
 
-    # Evaluate all runs
-    if args.all or args.pattern:
+    # Evaluate all runs (--all, --pattern, or --patterns)
+    if args.all or args.pattern or args.patterns:
         print(f"Methods: {', '.join(EVAL_METHODS[m]['name'] for m in methods)}")
         if args.use_tuned_params:
             print(f"Parameters: using model-specific tuned hyperparameters")
@@ -521,7 +540,7 @@ Examples:
         # Pass hyperparam_config only if --use-tuned-params is set
         hp_config = hyperparam_config if args.use_tuned_params else None
         all_results = evaluate_all_runs(args.results_dir, methods, params, args.pattern,
-                                        cache=cache, hyperparam_config=hp_config)
+                                        args.patterns, cache=cache, hyperparam_config=hp_config)
         print_summary_table(all_results, methods)
         return
 

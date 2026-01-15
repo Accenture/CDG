@@ -49,17 +49,20 @@ run_cmd() {
 # ============================================================
 # Exp 1-2: Model-Specific Tuned Parameters
 # ============================================================
+# Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b
+# Excluded: gemini_2_0_flash, gptoss20b_nohighreason, qwen32b
 run_exp_1_2() {
     echo ""
     echo "########################################"
     echo "# EXP 1-2: MODEL-SPECIFIC TUNED PARAMS"
     echo "########################################"
     echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
     echo "Parameters per model:"
     echo "  DeepSeek:  alpha=0.5, beta=10, position_pct=20"
-    echo "  Gptoss:    alpha=0.5, beta=10, position_pct=10 (Bruno: beta=20, pos=20)"
+    echo "  Gptoss20b: alpha=0.5, beta=10, position_pct=10 (Bruno: beta=20, pos=20)"
     echo "  Gemma3:    alpha=0.5, beta=5,  position_pct=10 AND 20"
-    echo "  Qwen/Qwq:  alpha=0.5, beta=10, position_pct=20"
+    echo "  QwQ:       alpha=0.5, beta=10, position_pct=20"
     echo ""
 
     OUTPUT_FILE="$OUTPUT_DIR/exp1-2_model_specific_${TIMESTAMP}.txt"
@@ -67,6 +70,7 @@ run_exp_1_2() {
     {
         echo "=============================================="
         echo "EXP 1-2: MODEL-SPECIFIC TUNED PARAMETERS"
+        echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
         echo "Timestamp: $TIMESTAMP"
         echo "=============================================="
         echo ""
@@ -74,47 +78,47 @@ run_exp_1_2() {
         # DeepSeek: alpha=0.5, beta=10, position_pct=20
         echo "--- DeepSeek (alpha=0.5, beta=10, pos=20) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*deepseek*" \
+            --pattern "deepseek8b*" \
             --method cdg \
             --alpha 0.5 --beta 10 --position_pct 20
 
-        # Gptoss (non-Bruno): alpha=0.5, beta=10, position_pct=10
-        echo "--- Gptoss non-Bruno (alpha=0.5, beta=10, pos=10) ---"
+        # Gptoss20b (non-Bruno, excluding nohighreason): alpha=0.5, beta=10, position_pct=10
+        echo "--- Gptoss20b non-Bruno (alpha=0.5, beta=10, pos=10) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*gptoss*aime*" \
+            --pattern "gptoss20b_aime*" \
             --method cdg \
             --alpha 0.5 --beta 10 --position_pct 10
 
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*gptoss*hmmt*" \
+            --pattern "gptoss20b_hmmt*" \
             --method cdg \
             --alpha 0.5 --beta 10 --position_pct 10
 
-        # Gptoss Bruno: alpha=0.5, beta=20, position_pct=20
-        echo "--- Gptoss Bruno (alpha=0.5, beta=20, pos=20) ---"
+        # Gptoss20b Bruno: alpha=0.5, beta=20, position_pct=20
+        echo "--- Gptoss20b Bruno (alpha=0.5, beta=20, pos=20) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*gptoss*bruno*" \
+            --pattern "gptoss20b_bruno*" \
             --method cdg \
             --alpha 0.5 --beta 20 --position_pct 20
 
         # Gemma3 with position_pct=10
         echo "--- Gemma3 (alpha=0.5, beta=5, pos=10) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*gemma3*" \
+            --pattern "gemma3_27b*" \
             --method cdg \
             --alpha 0.5 --beta 5 --position_pct 10
 
         # Gemma3 with position_pct=20 (for comparison)
         echo "--- Gemma3 (alpha=0.5, beta=5, pos=20) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*gemma3*" \
+            --pattern "gemma3_27b*" \
             --method cdg \
             --alpha 0.5 --beta 5 --position_pct 20
 
-        # Qwen/Qwq: alpha=0.5, beta=10, position_pct=20
-        echo "--- Qwen (alpha=0.5, beta=10, pos=20) ---"
+        # QwQ: alpha=0.5, beta=10, position_pct=20
+        echo "--- QwQ (alpha=0.5, beta=10, pos=20) ---"
         run_cmd python scripts/eval/eval_voting.py \
-            --pattern "*qwen*" \
+            --pattern "qwq32b*" \
             --method cdg \
             --alpha 0.5 --beta 10 --position_pct 20
 
@@ -126,12 +130,16 @@ run_exp_1_2() {
 # ============================================================
 # Exp 1-3-1: General Params (position_pct=20)
 # ============================================================
+# Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b
+MODEL_PATTERNS="deepseek8b*,gemma3_27b*,qwq32b*,gptoss20b_aime*,gptoss20b_bruno*,gptoss20b_hmmt*"
+
 run_exp_1_3_1() {
     echo ""
     echo "########################################"
     echo "# EXP 1-3-1: GENERAL PARAMS (pos=20)"
     echo "########################################"
     echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
     echo "All models: alpha=0.5, beta=10, position_pct=20"
     echo ""
 
@@ -140,13 +148,14 @@ run_exp_1_3_1() {
     {
         echo "=============================================="
         echo "EXP 1-3-1: GENERAL PARAMS (position_pct=20)"
+        echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
         echo "All models: alpha=0.5, beta=10, position_pct=20"
         echo "Timestamp: $TIMESTAMP"
         echo "=============================================="
         echo ""
 
         run_cmd python scripts/eval/eval_voting.py \
-            --all --all-methods \
+            --patterns "$MODEL_PATTERNS" --all-methods \
             --alpha 0.5 --beta 10 --position_pct 20
 
     } 2>&1 | tee "$OUTPUT_FILE"
@@ -163,6 +172,7 @@ run_exp_1_3_2() {
     echo "# EXP 1-3-2: GENERAL PARAMS (pos=10)"
     echo "########################################"
     echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
     echo "All models: alpha=0.5, beta=10, position_pct=10"
     echo ""
 
@@ -171,13 +181,14 @@ run_exp_1_3_2() {
     {
         echo "=============================================="
         echo "EXP 1-3-2: GENERAL PARAMS (position_pct=10)"
+        echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
         echo "All models: alpha=0.5, beta=10, position_pct=10"
         echo "Timestamp: $TIMESTAMP"
         echo "=============================================="
         echo ""
 
         run_cmd python scripts/eval/eval_voting.py \
-            --all --all-methods \
+            --patterns "$MODEL_PATTERNS" --all-methods \
             --alpha 0.5 --beta 10 --position_pct 10
 
     } 2>&1 | tee "$OUTPUT_FILE"

@@ -63,14 +63,20 @@ run_cmd() {
 # ============================================================
 # Experiment 3: Hyperparameter Tuning (RUN FIRST)
 # ============================================================
+# Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b
+# Excluded: gemini_2_0_flash, gptoss20b_nohighreason, qwen32b
+MODEL_PATTERNS="deepseek8b*,gemma3_27b*,qwq32b*,gptoss20b_aime*,gptoss20b_bruno*,gptoss20b_hmmt*"
+
 run_exp3() {
     echo ""
     echo "########################################"
     echo "# EXP 3: HYPERPARAMETER TUNING"
     echo "########################################"
     echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
+    echo ""
 
-    # Full sweep: all alpha/beta combinations across all models
+    # Full sweep: all alpha/beta combinations across selected models
     # Using 512 traces (full runs) for more accurate tuning
 
     # Sweep 1: Position PCT = 20
@@ -85,6 +91,7 @@ run_exp3() {
         --alphas 0.5,1.0 \
         --betas 1,5,10,15,20,25,30 \
         --position_pct 20 \
+        --patterns "$MODEL_PATTERNS" \
         --output "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.json" \
         --figure "$OUTPUT_DIR/hyperparam_sweep_pos20_${TIMESTAMP}.png" \
         --no-show \
@@ -102,6 +109,7 @@ run_exp3() {
         --alphas 0.5,1.0 \
         --betas 1,5,10,15,20,25,30 \
         --position_pct 10 \
+        --patterns "$MODEL_PATTERNS" \
         --output "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.json" \
         --figure "$OUTPUT_DIR/hyperparam_sweep_pos10_${TIMESTAMP}.png" \
         --save-config \
@@ -125,12 +133,13 @@ run_exp2() {
     echo "# EXP 2: SUBSAMPLE SCALING ANALYSIS"
     echo "########################################"
     echo ""
-
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
     echo "Using model-specific tuned hyperparameters from Exp 3"
     echo ""
 
     run_cmd python scripts/eval/eval_subsample.py \
         --use-tuned-params \
+        --patterns "$MODEL_PATTERNS" \
         --output "$OUTPUT_DIR/subsample_scaling_${TIMESTAMP}.png" \
         --no-show \
         $FAST_FLAG
@@ -147,12 +156,12 @@ run_exp1() {
     echo "# EXP 1: MAIN EVALUATION"
     echo "########################################"
     echo ""
-
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
     echo "Using model-specific tuned hyperparameters from Exp 3"
     echo ""
 
     run_cmd python scripts/eval/eval_voting.py \
-        --all --all-methods \
+        --patterns "$MODEL_PATTERNS" --all-methods \
         --use-tuned-params \
         $FAST_FLAG \
         2>&1 | tee "$OUTPUT_DIR/main_eval_${TIMESTAMP}.txt"
