@@ -241,6 +241,36 @@ def evaluate_with_params(run_info: dict, alpha: float, beta: float,
     }
 
 
+def check_cache_status(runs: list, alpha_values: list, beta_values: list,
+                       position_pct: int, cache: EvalCache) -> tuple:
+    """
+    Check how many results are already cached.
+
+    Returns (cached_count, total_count)
+    """
+    if cache is None:
+        return 0, len(runs) * len(alpha_values) * len(beta_values)
+
+    cached_count = 0
+    for run in runs:
+        for alpha in alpha_values:
+            for beta in beta_values:
+                params = {
+                    'alpha': alpha,
+                    'beta': beta,
+                    'position_pct': position_pct,
+                    'tail_window': DEFAULT_PARAMS['tail_window'],
+                    'bottom_window': DEFAULT_PARAMS['bottom_window'],
+                    'bottom_pct': DEFAULT_PARAMS['bottom_pct'],
+                }
+                cached = cache.load_result(run['run_id'], 'cdg', params)
+                if cached is not None:
+                    cached_count += 1
+
+    total = len(runs) * len(alpha_values) * len(beta_values)
+    return cached_count, total
+
+
 def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
                position_pct: int = 20, num_workers: int = None,
                cache: EvalCache = None) -> list:
@@ -253,6 +283,18 @@ def sweep_beta(runs: list, alpha_values: list = None, beta_values: list = None,
         alpha_values = ALPHA_VALUES
     if beta_values is None:
         beta_values = BETA_VALUES
+
+    # Check cache status first
+    total_tasks = len(runs) * len(alpha_values) * len(beta_values)
+    if cache is not None:
+        print(f"Checking cache status...")
+        cached_count, total = check_cache_status(runs, alpha_values, beta_values, position_pct, cache)
+        need_compute = total - cached_count
+        print(f"Cache: {cached_count}/{total} found, need to compute {need_compute}")
+        if cached_count == total:
+            print("All results cached!")
+    else:
+        print(f"Cache disabled, will compute all {total_tasks} evaluations")
 
     # Build task list
     tasks = []
