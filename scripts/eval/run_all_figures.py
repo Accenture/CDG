@@ -104,16 +104,15 @@ def generate_all_figures(model: str, dataset: str, cache_only: bool = False,
         ] + common_args,
     })
 
-    if not cache_only:
-        # All combinations
-        tasks.append({
-            'description': 'Histogram: All model-dataset combinations',
-            'cmd': [
-                sys.executable, str(SCRIPT_DIR / "fig_histogram.py"),
-                '--output-dir', hist_output,
-                '--all',
-            ] + common_args,
-        })
+    # All combinations (histograms read from pkl files, no cache needed)
+    tasks.append({
+        'description': 'Histogram: All model-dataset combinations',
+        'cmd': [
+            sys.executable, str(SCRIPT_DIR / "fig_histogram.py"),
+            '--output-dir', hist_output,
+            '--all',
+        ] + common_args,
+    })
 
     # ==========================================================================
     # 3. Subsample Figures

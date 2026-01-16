@@ -173,16 +173,14 @@ generate_histogram_figures() {
         $NO_SHOW_FLAG \
         2>&1 | while read line; do echo "    $line"; done
 
-    # Generate for all combinations (skip in cache-only mode)
-    if [[ "$CACHE_ONLY" != "true" ]]; then
-        print_step "Generating histograms for all model-dataset combinations..."
-        python "$SCRIPT_DIR/fig_histogram.py" \
-            --results-dir "$EXPERIMENT_RESULTS_DIR" \
-            --output-dir "$output_dir" \
-            --all \
-            $NO_SHOW_FLAG \
-            2>&1 | while read line; do echo "    $line"; done
-    fi
+    # Generate for all combinations (histograms read from pkl files, no cache needed)
+    print_step "Generating histograms for all model-dataset combinations..."
+    python "$SCRIPT_DIR/fig_histogram.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
+        --output-dir "$output_dir" \
+        --all \
+        $NO_SHOW_FLAG \
+        2>&1 | while read line; do echo "    $line"; done
 
     print_success "Histogram figures saved to: $output_dir"
 }
