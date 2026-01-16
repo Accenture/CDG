@@ -47,6 +47,28 @@ def subsample_traces(traces: list, n: int, seed: int) -> list:
     return random.sample(traces, n)
 
 
+def check_all_outputs_exist(
+    pkl_path: str,
+    experiment: str,
+    output_base: str,
+    subset_sizes: list,
+    num_versions: int
+) -> bool:
+    """Quick check if all outputs already exist (without loading pickle)."""
+    basename = os.path.basename(pkl_path)
+    # Extract qid from filename: qid{N}_{timestamp}.pkl
+    qid_part = basename.split('_')[0]  # e.g., "qid0"
+    timestamp = basename.split('_', 1)[1].replace('.pkl', '')
+
+    for subset_size in subset_sizes:
+        for version in range(1, num_versions + 1):
+            output_dir_name = f"{experiment}_subset{subset_size}v{version}"
+            output_path = os.path.join(output_base, output_dir_name, f"{qid_part}_{timestamp}.pkl")
+            if not os.path.exists(output_path):
+                return False
+    return True
+
+
 def process_single_file(
     pkl_path: str,
     experiment: str,
@@ -62,6 +84,11 @@ def process_single_file(
     Returns dict with stats about processing.
     """
     stats = {'files_created': 0, 'errors': []}
+
+    # Quick check: if all outputs exist, skip loading entirely
+    if not dry_run and check_all_outputs_exist(pkl_path, experiment, output_base, subset_sizes, num_versions):
+        stats['files_skipped'] = len(subset_sizes) * num_versions
+        return stats
 
     # Load the pickle file
     try:
@@ -197,9 +224,24 @@ def process_experiment(
 
     total_stats = {'files_created': 0, 'files_skipped': 0, 'errors': [], 'files_processed': 0}
 
-    for i, pkl_path in enumerate(pkl_files, 1):
+    # First pass: quick check how many need processing
+    needs_processing = []
+    for pkl_path in pkl_files:
+        if dry_run or not check_all_outputs_exist(pkl_path, experiment, output_base, subset_sizes, num_versions):
+            needs_processing.append(pkl_path)
+
+    if not needs_processing:
+        total_skipped = len(pkl_files) * len(subset_sizes) * num_versions
+        print(f"\n  All {len(pkl_files)} files already processed ({total_skipped} subset files exist)")
+        total_stats['files_skipped'] = total_skipped
+        total_stats['files_processed'] = len(pkl_files)
+        return total_stats
+
+    print(f"\n  {len(needs_processing)}/{len(pkl_files)} files need processing, {len(pkl_files) - len(needs_processing)} already done")
+
+    for i, pkl_path in enumerate(needs_processing, 1):
         basename = os.path.basename(pkl_path)
-        print(f"\n[{i}/{len(pkl_files)}] Processing {basename}...")
+        print(f"\n[{i}/{len(needs_processing)}] Processing {basename}...")
 
         stats = process_single_file(
             pkl_path=pkl_path,
@@ -217,13 +259,19 @@ def process_experiment(
         total_stats['files_processed'] += 1
 
         skipped = stats.get('files_skipped', 0)
-        print(f"  Created {stats['files_created']} subset files" + (f", skipped {skipped} existing" if skipped else ""))
+        if stats['files_created'] > 0 or stats['errors']:
+            print(f"  Created {stats['files_created']} subset files" + (f", skipped {skipped} existing" if skipped else ""))
         if stats['errors']:
             for err in stats['errors']:
                 print(f"  ERROR: {err}")
 
         # Clear memory after each file
         gc.collect()
+
+    # Add skipped count for files we didn't process
+    already_done = len(pkl_files) - len(needs_processing)
+    total_stats['files_skipped'] += already_done * len(subset_sizes) * num_versions
+    total_stats['files_processed'] += already_done
 
     return total_stats
 
