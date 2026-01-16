@@ -22,10 +22,11 @@ SUBSET_DIR="$RESULTS_BASE/subset_trace"
 YU_BASE="/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper"
 
 # Mapping: [target_name]="source_path"
+# NOTE: Yu's directories have nested subdirectories containing the actual pkl files
 declare -A REPLACEMENTS=(
-    ["deepseek8b_aime2025_512"]="$YU_BASE/deepseek/aime_2025_run_512_results_newpara"
-    ["gptoss20b_aime2025_512"]="$YU_BASE/gptoss_NO_high_reason_topk_40/aime_2025_run_512_results_gptoss20b_topk_40_no_highreason"
-    ["gptoss20b_hmmt2025_512"]="$YU_BASE/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_hmmt_2025_gptoss_topk_40_no_highreason"
+    ["deepseek8b_aime2025_512"]="$YU_BASE/deepseek/aime_2025_run_512_results_newpara/aime2025rundeepseek8b_newpara"
+    ["gptoss20b_aime2025_512"]="$YU_BASE/gptoss_NO_high_reason_topk_40/aime_2025_run_512_results_gptoss20b_topk_40_no_highreason/aime2025run3qgptoss20b_topk_40"
+    ["gptoss20b_hmmt2025_512"]="$YU_BASE/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_hmmt_2025_gptoss_topk_40_no_highreason/hmmt2025run3qgptoss20b_topk_40"
 )
 
 # Colors
