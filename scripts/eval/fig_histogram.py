@@ -94,16 +94,20 @@ def extract_trace_metrics(results_dir: str, model: str, dataset: str,
                           alpha: float = 0.5, beta: float = 10,
                           position_pct: int = 10) -> dict:
     """
-    Extract per-trace metrics for correct vs wrong answers.
+    Extract metrics for correct vs wrong answers.
+
+    Two levels of metrics:
+    - Trace-level: mean_conf, tail_conf, gradient (per individual trace)
+    - Answer-level: count, cdg_score (per answer candidate)
 
     Returns:
         {
             'correct': {
-                'counts': [n1, n2, ...],  # count per answer group
-                'mean_conf': [c1, c2, ...],
-                'tail_conf': [t1, t2, ...],
-                'gradient': [g1, g2, ...],
-                'cdg_score': [s1, s2, ...],
+                'mean_conf': [...],      # per-trace
+                'tail_conf': [...],      # per-trace
+                'gradient': [...],       # per-trace
+                'cdg_score': [...],      # per-answer (one per answer candidate)
+                'vote_count': [...],     # per-answer (count for each answer)
             },
             'wrong': { ... same structure ... }
         }
@@ -129,21 +133,21 @@ def extract_trace_metrics(results_dir: str, model: str, dataset: str,
     if not results_by_qid:
         return None
 
-    # Extract metrics per trace
+    # Extract metrics - separate trace-level and answer-level
     metrics = {
         'correct': {
-            'counts': [],
-            'mean_conf': [],
-            'tail_conf': [],
-            'gradient': [],
-            'cdg_score': [],
+            'mean_conf': [],      # per-trace
+            'tail_conf': [],      # per-trace
+            'gradient': [],       # per-trace
+            'cdg_score': [],      # per-answer
+            'vote_count': [],     # per-answer
         },
         'wrong': {
-            'counts': [],
             'mean_conf': [],
             'tail_conf': [],
             'gradient': [],
             'cdg_score': [],
+            'vote_count': [],
         },
         'meta': {
             'model': model,
@@ -152,6 +156,8 @@ def extract_trace_metrics(results_dir: str, model: str, dataset: str,
             'beta': beta,
             'position_pct': position_pct,
             'n_questions': 0,
+            'n_correct_answers': 0,
+            'n_wrong_answers': 0,
             'n_correct_traces': 0,
             'n_wrong_traces': 0,
         }
@@ -190,18 +196,9 @@ def extract_trace_metrics(results_dir: str, model: str, dataset: str,
                     'tail_conf': tail_conf,
                 })
 
-        # Compute metrics per answer group
+        # Process each answer group
         for answer, traces_list in answer_groups.items():
             count = len(traces_list)
-
-            # Mean of trace-level metrics
-            mean_confs = [t['mean_conf'] for t in traces_list]
-            gradients = [t['gradient'] for t in traces_list]
-            tail_confs = [t['tail_conf'] for t in traces_list]
-
-            # CDG score for this answer group
-            trace_scores = [t['mean_conf'] + beta * t['gradient'] for t in traces_list]
-            cdg_score = (count ** alpha) * np.mean(trace_scores)
 
             # Check if answer is correct
             try:
@@ -211,18 +208,24 @@ def extract_trace_metrics(results_dir: str, model: str, dataset: str,
 
             key = 'correct' if is_correct else 'wrong'
 
-            # Store metrics for each trace in the group
+            # Store TRACE-LEVEL metrics (one entry per trace)
             for t in traces_list:
-                metrics[key]['counts'].append(count)
                 metrics[key]['mean_conf'].append(t['mean_conf'])
                 metrics[key]['tail_conf'].append(t['tail_conf'])
                 metrics[key]['gradient'].append(t['gradient'])
-                # CDG score is per-group, but we assign to each trace for histogram
-                metrics[key]['cdg_score'].append(cdg_score / count)  # Normalize by count for per-trace
+
+            # Store ANSWER-LEVEL metrics (one entry per answer candidate)
+            # CDG score: count^alpha * mean(mean_conf + beta * gradient)
+            trace_scores = [t['mean_conf'] + beta * t['gradient'] for t in traces_list]
+            cdg_score = (count ** alpha) * np.mean(trace_scores)
+            metrics[key]['cdg_score'].append(cdg_score)
+            metrics[key]['vote_count'].append(count)
 
             if is_correct:
+                metrics['meta']['n_correct_answers'] += 1
                 metrics['meta']['n_correct_traces'] += len(traces_list)
             else:
+                metrics['meta']['n_wrong_answers'] += 1
                 metrics['meta']['n_wrong_traces'] += len(traces_list)
 
     return metrics
@@ -321,50 +324,54 @@ def create_combined_figure(metrics: dict, output_dir: Path, n_bins: int = 50):
     model_name = MODEL_NAMES.get(model, model)
     dataset_name = DATASET_NAMES.get(dataset, dataset)
 
-    # 1. Majority vote (count distribution)
+    # 1. Majority vote (count distribution) - PER-ANSWER
     create_count_histogram(
         axes[0],
-        metrics['correct']['counts'],
-        metrics['wrong']['counts'],
-        title='(a) Majority Vote (Answer Count)'
+        metrics['correct']['vote_count'],
+        metrics['wrong']['vote_count'],
+        title='(a) Vote Count (per answer)'
     )
 
-    # 2. Mean confidence
+    # 2. Mean confidence - PER-TRACE
     create_histogram_subplot(
         axes[1],
         metrics['correct']['mean_conf'],
         metrics['wrong']['mean_conf'],
-        title='(b) Mean Confidence',
+        title='(b) Mean Confidence (per trace)',
         xlabel='Mean Token Confidence',
         n_bins=n_bins
     )
 
-    # 3. Tail confidence
+    # 3. Tail confidence - PER-TRACE
     create_histogram_subplot(
         axes[2],
         metrics['correct']['tail_conf'],
         metrics['wrong']['tail_conf'],
-        title='(c) Tail Confidence (DeepConf)',
+        title='(c) Tail Confidence (per trace)',
         xlabel='Tail Token Confidence',
         n_bins=n_bins
     )
 
-    # 4. CDG score
+    # 4. CDG score - PER-ANSWER (this is the key metric!)
+    # Fewer data points but should show clear separation
+    n_correct_ans = len(metrics['correct']['cdg_score'])
+    n_wrong_ans = len(metrics['wrong']['cdg_score'])
+    cdg_bins = min(n_bins, max(10, min(n_correct_ans, n_wrong_ans) // 2))
     create_histogram_subplot(
         axes[3],
         metrics['correct']['cdg_score'],
         metrics['wrong']['cdg_score'],
-        title='(d) CDG Score (Ours)',
-        xlabel='CDG Score (per trace)',
-        n_bins=n_bins
+        title=f'(d) CDG Score (per answer, n={n_correct_ans}+{n_wrong_ans})',
+        xlabel='CDG Score = count^α × mean(conf + β×gradient)',
+        n_bins=cdg_bins
     )
 
-    # 5. Gradient (Conf_tail - Conf_start)
+    # 5. Gradient (Conf_tail - Conf_start) - PER-TRACE
     create_histogram_subplot(
         axes[4],
         metrics['correct']['gradient'],
         metrics['wrong']['gradient'],
-        title=r'(e) Confidence Gradient ($\beta$ term)',
+        title=r'(e) Confidence Gradient (per trace)',
         xlabel='Gradient: Tail 10% - Head 10%',
         n_bins=n_bins
     )
@@ -377,19 +384,25 @@ Model: {model_name}
 Dataset: {dataset_name}
 
 Questions: {metrics['meta']['n_questions']}
-Correct traces: {metrics['meta']['n_correct_traces']}
-Wrong traces: {metrics['meta']['n_wrong_traces']}
+
+Answer candidates:
+  Correct: {metrics['meta']['n_correct_answers']}
+  Wrong: {metrics['meta']['n_wrong_answers']}
+
+Traces:
+  Correct: {metrics['meta']['n_correct_traces']}
+  Wrong: {metrics['meta']['n_wrong_traces']}
 
 CDG Parameters:
-  alpha = {metrics['meta']['alpha']}
-  beta = {metrics['meta']['beta']}
-  position_pct = {metrics['meta']['position_pct']}%
+  α = {metrics['meta']['alpha']}
+  β = {metrics['meta']['beta']}
+  position = {metrics['meta']['position_pct']}%
 """
     axes[5].text(0.1, 0.9, summary_text, transform=axes[5].transAxes,
                 fontsize=11, verticalalignment='top', family='monospace',
                 bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.3))
 
-    fig.suptitle(f'Correct vs Wrong Answer Distributions: {model_name} on {dataset_name}',
+    fig.suptitle(f'Correct vs Wrong Distributions: {model_name} on {dataset_name}',
                 fontsize=14, fontweight='bold')
 
     plt.tight_layout()
@@ -413,11 +426,11 @@ def create_individual_histograms(metrics: dict, output_dir: Path, n_bins: int = 
     dataset = metrics['meta']['dataset']
 
     metric_configs = [
-        ('majority_vote', 'counts', 'Answer Count', 'count'),
-        ('mean_conf', 'mean_conf', 'Mean Token Confidence', 'hist'),
-        ('tail_conf', 'tail_conf', 'Tail Token Confidence', 'hist'),
-        ('cdg_score', 'cdg_score', 'CDG Score', 'hist'),
-        ('gradient', 'gradient', 'Confidence Gradient (Tail 10% - Head 10%)', 'hist'),
+        ('vote_count', 'vote_count', 'Vote Count (per answer)', 'count'),
+        ('mean_conf', 'mean_conf', 'Mean Token Confidence (per trace)', 'hist'),
+        ('tail_conf', 'tail_conf', 'Tail Token Confidence (per trace)', 'hist'),
+        ('cdg_score', 'cdg_score', 'CDG Score (per answer)', 'hist'),
+        ('gradient', 'gradient', 'Confidence Gradient (per trace)', 'hist'),
     ]
 
     for name, key, xlabel, plot_type in metric_configs:
@@ -461,8 +474,8 @@ def save_numerical_data(metrics: dict, output_dir: Path):
 
     for category in ['correct', 'wrong']:
         data['statistics'][category] = {}
-        for metric in ['counts', 'mean_conf', 'tail_conf', 'gradient', 'cdg_score']:
-            values = metrics[category][metric]
+        for metric in ['vote_count', 'mean_conf', 'tail_conf', 'gradient', 'cdg_score']:
+            values = metrics[category].get(metric, [])
             if values:
                 data['statistics'][category][metric] = {
                     'mean': float(np.mean(values)),
@@ -480,8 +493,8 @@ def save_numerical_data(metrics: dict, output_dir: Path):
     # Add statistical tests
     data['tests'] = {}
     for metric in ['mean_conf', 'tail_conf', 'gradient', 'cdg_score']:
-        correct = metrics['correct'][metric]
-        wrong = metrics['wrong'][metric]
+        correct = metrics['correct'].get(metric, [])
+        wrong = metrics['wrong'].get(metric, [])
         if len(correct) > 1 and len(wrong) > 1:
             t_stat, p_val = stats.ttest_ind(correct, wrong)
             data['tests'][metric] = {

@@ -8,7 +8,6 @@ Usage:
     python scripts/eval/run_all_figures.py --list   # List what would be generated
 """
 
-import os
 import sys
 import argparse
 import subprocess
