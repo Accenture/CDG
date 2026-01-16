@@ -23,6 +23,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESULTS_BASE="$PROJECT_ROOT/results"
 
+# Source config.sh for OUTPUT_BASE and other settings
+source "$SCRIPT_DIR/../config.sh"
+
+# Experiment results directory (where pickle files and cache are)
+EXPERIMENT_RESULTS_DIR="${OUTPUT_BASE}"
+
 # Default model/dataset for main paper figures
 DEFAULT_MODEL="qwen32b"
 DEFAULT_DATASET="aime2025"
@@ -107,10 +113,12 @@ generate_hyperparam_figures() {
     mkdir -p "$output_dir"
 
     print_step "Output directory: $output_dir"
+    print_step "Reading from: $EXPERIMENT_RESULTS_DIR (via PathConfig.OUTPUT_BASE)"
 
     # Main paper figures (one model × 4 datasets)
     print_step "Generating main paper figure (model: $MODEL)..."
     python "$SCRIPT_DIR/fig_hyperparam.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --main-paper --model "$MODEL" \
         $NO_SHOW_FLAG $CACHE_ONLY_FLAG \
@@ -119,6 +127,7 @@ generate_hyperparam_figures() {
     # Main paper figures (one dataset × 4 models)
     print_step "Generating main paper figure (dataset: $DATASET)..."
     python "$SCRIPT_DIR/fig_hyperparam.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --main-paper --dataset "$DATASET" \
         $NO_SHOW_FLAG $CACHE_ONLY_FLAG \
@@ -127,6 +136,7 @@ generate_hyperparam_figures() {
     # Full grid for appendix
     print_step "Generating appendix grid figure..."
     python "$SCRIPT_DIR/fig_hyperparam.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --no-individual \
         $NO_SHOW_FLAG $CACHE_ONLY_FLAG \
@@ -136,6 +146,7 @@ generate_hyperparam_figures() {
     if [[ "$CACHE_ONLY" != "true" ]]; then
         print_step "Generating individual figures..."
         python "$SCRIPT_DIR/fig_hyperparam.py" \
+            --results-dir "$EXPERIMENT_RESULTS_DIR" \
             --output-dir "$output_dir" \
             $NO_SHOW_FLAG \
             2>&1 | while read line; do echo "    $line"; done
@@ -155,16 +166,18 @@ generate_histogram_figures() {
     # Main figure for specified model/dataset
     print_step "Generating histogram for $MODEL on $DATASET..."
     python "$SCRIPT_DIR/fig_histogram.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --model "$MODEL" \
         --dataset "$DATASET" \
         $NO_SHOW_FLAG \
         2>&1 | while read line; do echo "    $line"; done
 
-    # Generate for all combinations in lazy mode skip
-    if [[ "$LAZY_MODE" != "true" ]]; then
+    # Generate for all combinations (skip in cache-only mode)
+    if [[ "$CACHE_ONLY" != "true" ]]; then
         print_step "Generating histograms for all model-dataset combinations..."
         python "$SCRIPT_DIR/fig_histogram.py" \
+            --results-dir "$EXPERIMENT_RESULTS_DIR" \
             --output-dir "$output_dir" \
             --all \
             $NO_SHOW_FLAG \
@@ -185,6 +198,7 @@ generate_subsample_figures() {
     # Main paper figure (single row)
     print_step "Generating main paper figure (model: $MODEL)..."
     python "$SCRIPT_DIR/fig_subsample.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --main-paper --model "$MODEL" \
         --key-methods-only \
@@ -194,6 +208,7 @@ generate_subsample_figures() {
     # Improvement plot
     print_step "Generating improvement over baseline plot..."
     python "$SCRIPT_DIR/fig_subsample.py" \
+        --results-dir "$EXPERIMENT_RESULTS_DIR" \
         --output-dir "$output_dir" \
         --improvement --model "$MODEL" \
         $NO_SHOW_FLAG $CACHE_ONLY_FLAG \
@@ -203,6 +218,7 @@ generate_subsample_figures() {
     if [[ "$CACHE_ONLY" != "true" ]]; then
         print_step "Generating full grid for appendix..."
         python "$SCRIPT_DIR/fig_subsample.py" \
+            --results-dir "$EXPERIMENT_RESULTS_DIR" \
             --output-dir "$output_dir" \
             --grid \
             $NO_SHOW_FLAG \
@@ -211,6 +227,7 @@ generate_subsample_figures() {
         # Method comparison
         print_step "Generating method comparison views..."
         python "$SCRIPT_DIR/fig_subsample.py" \
+            --results-dir "$EXPERIMENT_RESULTS_DIR" \
             --output-dir "$output_dir" \
             --method-comparison --dataset "$DATASET" \
             $NO_SHOW_FLAG \
@@ -219,6 +236,7 @@ generate_subsample_figures() {
         # Compact heatmap
         print_step "Generating compact heatmap..."
         python "$SCRIPT_DIR/fig_subsample.py" \
+            --results-dir "$EXPERIMENT_RESULTS_DIR" \
             --output-dir "$output_dir" \
             --compact \
             $NO_SHOW_FLAG \
@@ -325,8 +343,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If --all, enable all
-if [[ "$RUN_ALL" == "true" ]]; then
+# If --all OR no specific figure type requested, enable all
+if [[ "$RUN_ALL" == "true" ]] || [[ "$RUN_HYPERPARAM" == "false" && "$RUN_HISTOGRAM" == "false" && "$RUN_SUBSAMPLE" == "false" ]]; then
+    RUN_ALL=true
     RUN_HYPERPARAM=true
     RUN_HISTOGRAM=true
     RUN_SUBSAMPLE=true
@@ -339,12 +358,11 @@ fi
 print_header "Paper Figure Generation"
 
 echo "Configuration:"
-echo "  Project root: $PROJECT_ROOT"
-echo "  Output base:  $RESULTS_BASE"
-echo "  Model:        $MODEL"
-echo "  Dataset:      $DATASET"
-echo "  Cache-only:   $CACHE_ONLY"
-echo "  No show:      $([ -n "$NO_SHOW_FLAG" ] && echo 'yes' || echo 'no')"
+echo "  Experiment data: $EXPERIMENT_RESULTS_DIR"
+echo "  Figure output:   $RESULTS_BASE"
+echo "  Model:           $MODEL"
+echo "  Dataset:         $DATASET"
+echo "  Cache-only:      $CACHE_ONLY"
 echo ""
 
 if [[ "$DRY_RUN" == "true" ]]; then
