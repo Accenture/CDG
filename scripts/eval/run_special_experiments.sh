@@ -2,6 +2,7 @@
 # Special experiments with manually tuned parameters
 #
 # Exp 1-2: Model-specific tuned parameters (best found manually)
+# Exp 1-2-2: Model-specific tuned parameters (1/15 2PM verified optimal)
 # Exp 1-3-1: General params (alpha=0.5, beta=10, position_pct=20) for all models
 # Exp 1-3-2: General params (alpha=0.5, beta=10, position_pct=10) for all models
 # Exp 1-4: Beta=0 ablation (no gradient signal, expected worse results)
@@ -9,6 +10,7 @@
 # Usage:
 #   ./run_special_experiments.sh                    # Run all special experiments
 #   ./run_special_experiments.sh --exp 1-2         # Run only Exp 1-2
+#   ./run_special_experiments.sh --exp 1-2-2       # Run only Exp 1-2-2 (1/15 2PM verified)
 #   ./run_special_experiments.sh --exp 1-3-1       # Run only Exp 1-3-1
 #   ./run_special_experiments.sh --exp 1-3-2       # Run only Exp 1-3-2
 #   ./run_special_experiments.sh --exp 1-4         # Run only Exp 1-4 (beta=0 ablation)
@@ -130,6 +132,71 @@ run_exp_1_2() {
     } 2>&1 | tee "$OUTPUT_FILE"
 
     echo "Exp 1-2 complete. Results saved to: $OUTPUT_FILE"
+}
+
+# ============================================================
+# Exp 1-2-2: Model-Specific Tuned Parameters (1/15 2PM verified optimal)
+# ============================================================
+# All models use alpha=0.5, position_pct=10
+# DeepSeek & Gptoss: beta=10
+# Gemma3 & QwQ: beta=3
+run_exp_1_2_2() {
+    echo ""
+    echo "########################################"
+    echo "# EXP 1-2-2: VERIFIED OPTIMAL PARAMS"
+    echo "# (1/15 2PM verified)"
+    echo "########################################"
+    echo ""
+    echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
+    echo "Parameters per model (all alpha=0.5, position_pct=10):"
+    echo "  DeepSeek:  beta=10"
+    echo "  Gptoss20b: beta=10"
+    echo "  Gemma3:    beta=3"
+    echo "  QwQ:       beta=3"
+    echo ""
+
+    OUTPUT_FILE="$OUTPUT_DIR/exp1-2-2_verified_optimal_${TIMESTAMP}.txt"
+
+    {
+        echo "=============================================="
+        echo "EXP 1-2-2: VERIFIED OPTIMAL PARAMETERS"
+        echo "(1/15 2PM verified)"
+        echo "Models: deepseek8b, gemma3_27b, qwq32b, gptoss20b"
+        echo "Timestamp: $TIMESTAMP"
+        echo "=============================================="
+        echo ""
+
+        # DeepSeek: alpha=0.5, beta=10, position_pct=10
+        echo "--- DeepSeek (alpha=0.5, beta=10, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "deepseek8b*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 10
+
+        # Gptoss20b: alpha=0.5, beta=10, position_pct=10
+        echo "--- Gptoss20b (alpha=0.5, beta=10, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --patterns "gptoss20b_aime*,gptoss20b_bruno*,gptoss20b_hmmt*" \
+            --method cdg \
+            --alpha 0.5 --beta 10 --position_pct 10
+
+        # Gemma3: alpha=0.5, beta=3, position_pct=10
+        echo "--- Gemma3 (alpha=0.5, beta=3, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "gemma3_27b*" \
+            --method cdg \
+            --alpha 0.5 --beta 3 --position_pct 10
+
+        # QwQ: alpha=0.5, beta=3, position_pct=10
+        echo "--- QwQ (alpha=0.5, beta=3, pos=10) ---"
+        run_cmd python scripts/eval/eval_voting.py \
+            --pattern "qwq32b*" \
+            --method cdg \
+            --alpha 0.5 --beta 3 --position_pct 10
+
+    } 2>&1 | tee "$OUTPUT_FILE"
+
+    echo "Exp 1-2-2 complete. Results saved to: $OUTPUT_FILE"
 }
 
 # ============================================================
@@ -259,16 +326,18 @@ echo ""
 if [[ -n "$RUN_EXP" ]]; then
     case $RUN_EXP in
         1-2) run_exp_1_2 ;;
+        1-2-2) run_exp_1_2_2 ;;
         1-3-1) run_exp_1_3_1 ;;
         1-3-2) run_exp_1_3_2 ;;
         1-4) run_exp_1_4 ;;
-        *) echo "Unknown experiment: $RUN_EXP (valid: 1-2, 1-3-1, 1-3-2, 1-4)"; exit 1 ;;
+        *) echo "Unknown experiment: $RUN_EXP (valid: 1-2, 1-2-2, 1-3-1, 1-3-2, 1-4)"; exit 1 ;;
     esac
 else
     # Run all special experiments
-    echo "Running all special experiments: 1-2, 1-3-1, 1-3-2, 1-4"
+    echo "Running all special experiments: 1-2, 1-2-2, 1-3-1, 1-3-2, 1-4"
     echo ""
     run_exp_1_2
+    run_exp_1_2_2
     run_exp_1_3_1
     run_exp_1_3_2
     run_exp_1_4
