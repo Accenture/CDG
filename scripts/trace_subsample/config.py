@@ -19,12 +19,14 @@ VERSION_SEEDS = {
 }
 
 # Source experiments to process (512 trace runs)
+# Models: qwq32b, deepseek8b, gemma3_27b, gptoss20b
+# Excluded: qwen32b, gptoss20b_nohighreason
 SOURCE_EXPERIMENTS = [
-    # Qwen 32B
-    "qwen32b_aime2024_512",
-    "qwen32b_aime2025_512",
-    "qwen32b_bruno2025_512",
-    "qwen32b_hmmt2025_512",
+    # QwQ 32B
+    "qwq32b_aime2024_512",
+    "qwq32b_aime2025_512",
+    "qwq32b_bruno2025_512",
+    "qwq32b_hmmt2025_512",
     # DeepSeek 8B
     "deepseek8b_aime2024_512",
     "deepseek8b_aime2025_512",
@@ -35,14 +37,11 @@ SOURCE_EXPERIMENTS = [
     "gemma3_27b_aime2025_512",
     "gemma3_27b_bruno2025_512",
     "gemma3_27b_hmmt2025_512",
-    # GPTOSS 20B (with high reason) - partial
+    # GPTOSS 20B (with high reason only)
+    "gptoss20b_aime2024_512",
     "gptoss20b_aime2025_512",
     "gptoss20b_bruno2025_512",
-    # GPTOSS 20B (no high reason)
-    "gptoss20b_nohighreason_aime2024_512",
-    "gptoss20b_nohighreason_aime2025_512",
-    "gptoss20b_nohighreason_bruno2025_512",
-    "gptoss20b_nohighreason_hmmt2025_512",
+    "gptoss20b_hmmt2025_512",
 ]
 
 # Paths (to be set when running on VM)

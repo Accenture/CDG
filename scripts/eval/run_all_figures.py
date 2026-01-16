@@ -23,7 +23,7 @@ RESULTS_BASE = PROJECT_ROOT / "results"
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 # Configuration
-DEFAULT_MODEL = 'qwen32b'
+DEFAULT_MODEL = 'qwq32b'
 DEFAULT_DATASET = 'aime2025'
 
 

@@ -69,12 +69,12 @@ SUBSET_SUBDIR = "subset_trace"
 TRACE_COUNTS = [8, 16, 32, 64, 128, 256, 512]
 
 # Models and datasets
-MODELS = ['qwen32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
+MODELS = ['qwq32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
 DATASETS = ['aime2025', 'aime2024', 'hmmt2025', 'bruno2025']
 
 # Pretty names
 MODEL_NAMES = {
-    'qwen32b': 'Qwen3 32B',
+    'qwq32b': 'QwQ 32B',
     'deepseek8b': 'DeepSeek R1 8B',
     'gemma3_27b': 'Gemma 3 27B',
     'gptoss20b': 'GPT-OSS 20B',
@@ -103,7 +103,7 @@ METHOD_STYLES = {
 
 # Model colors (for method comparison view)
 MODEL_COLORS = {
-    'qwen32b': '#1f77b4',
+    'qwq32b': '#1f77b4',
     'deepseek8b': '#ff7f0e',
     'gemma3_27b': '#2ca02c',
     'gptoss20b': '#d62728',

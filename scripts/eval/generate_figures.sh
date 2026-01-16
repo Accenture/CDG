@@ -30,7 +30,7 @@ source "$SCRIPT_DIR/../config.sh"
 EXPERIMENT_RESULTS_DIR="${OUTPUT_BASE}"
 
 # Default model/dataset for main paper figures
-DEFAULT_MODEL="qwen32b"
+DEFAULT_MODEL="qwq32b"
 DEFAULT_DATASET="aime2025"
 
 # Colors for output

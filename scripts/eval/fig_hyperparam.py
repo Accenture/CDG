@@ -64,12 +64,12 @@ BETA_VALUES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]  # Added beta=0
 POSITION_PCT = 20
 
 # Models and datasets
-MODELS = ['qwen32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
+MODELS = ['qwq32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
 DATASETS = ['aime2025', 'aime2024', 'hmmt2025', 'bruno2025']
 
 # Pretty names for display
 MODEL_NAMES = {
-    'qwen32b': 'Qwen3 32B',
+    'qwq32b': 'QwQ 32B',
     'deepseek8b': 'DeepSeek R1 8B',
     'gemma3_27b': 'Gemma 3 27B',
     'gptoss20b': 'GPT-OSS 20B',

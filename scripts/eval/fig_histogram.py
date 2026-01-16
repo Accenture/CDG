@@ -63,16 +63,16 @@ DEFAULT_RESULTS_DIR = PathConfig.OUTPUT_BASE
 OUTPUT_BASE = Path(__file__).parent.parent.parent / "results" / "fig_histogram"
 
 # Default model/dataset for paper figure
-DEFAULT_MODEL = 'qwen32b'
+DEFAULT_MODEL = 'qwq32b'
 DEFAULT_DATASET = 'aime2025'
 
 # Models and datasets
-MODELS = ['qwen32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
+MODELS = ['qwq32b', 'deepseek8b', 'gemma3_27b', 'gptoss20b']
 DATASETS = ['aime2025', 'aime2024', 'hmmt2025', 'bruno2025']
 
 # Pretty names
 MODEL_NAMES = {
-    'qwen32b': 'Qwen3 32B',
+    'qwq32b': 'QwQ 32B',
     'deepseek8b': 'DeepSeek R1 8B',
     'gemma3_27b': 'Gemma 3 27B',
     'gptoss20b': 'GPT-OSS 20B',
