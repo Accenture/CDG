@@ -152,7 +152,10 @@ execute_fix() {
         target_dir="$RESULTS_BASE/$target"
 
         if [ -d "$target_dir" ]; then
-            backup_dir="${target_dir}_backup_$(date +%Y%m%d_%H%M%S)"
+            # Move backup to separate directory to avoid matching MODEL_PATTERNS
+            backup_base="$RESULTS_BASE/_backups"
+            mkdir -p "$backup_base"
+            backup_dir="$backup_base/${target}_$(date +%Y%m%d_%H%M%S)"
             mv "$target_dir" "$backup_dir"
             echo "  Backed up to: $backup_dir"
         fi
@@ -192,7 +195,7 @@ dry_run() {
         echo "  - Remove cache: $CACHE_DIR/${target}*"
         echo "  - Remove subset cache: $CACHE_DIR/${target}_subset*"
         echo "  - Remove subsets: $SUBSET_DIR/${target}_subset*"
-        echo "  - Backup: $RESULTS_BASE/$target → ${target}_backup_*"
+        echo "  - Backup: $RESULTS_BASE/$target → _backups/${target}_*"
         echo "  - Copy: $source → $RESULTS_BASE/$target"
         echo ""
     done
