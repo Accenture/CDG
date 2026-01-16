@@ -487,7 +487,7 @@ def save_numerical_data(metrics: dict, output_dir: Path):
             data['tests'][metric] = {
                 't_statistic': float(t_stat),
                 'p_value': float(p_val),
-                'significant': p_val < 0.05,
+                'significant': bool(p_val < 0.05),
             }
 
     output_path = output_dir / f"histogram_data_{metrics['meta']['model']}_{metrics['meta']['dataset']}.json"
