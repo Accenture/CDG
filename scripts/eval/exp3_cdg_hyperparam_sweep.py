@@ -13,8 +13,13 @@ Formula: score = count^alpha * mean(mean_conf + beta * gradient)
 Where gradient = mean(last P%) - mean(first P%)
 
 Usage:
-    python scripts/eval/exp3_cdg_hyperparam_sweep.py              # Run full sweep
-    python scripts/eval/exp3_cdg_hyperparam_sweep.py --figures-only  # Load cache, regenerate figures
+    python exp3_cdg_hyperparam_sweep.py              # Run full sweep
+    python exp3_cdg_hyperparam_sweep.py --no-compute # Load cache, print tables & regenerate figures
+    python exp3_cdg_hyperparam_sweep.py --resume     # Resume from partial cache if interrupted
+
+Cache files:
+    results/exp3_cdg_sweep/sweep_cache.json    # Final cache for --no-compute
+    results/exp3_cdg_sweep/partial_cache.json  # Partial cache for --resume
 """
 import argparse
 import pickle
@@ -71,6 +76,9 @@ OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp3_cdg_sweep'
 
 # Stable cache file (no timestamp - for quick figure regeneration)
 CACHE_FILE = OUTPUT_DIR / 'sweep_cache.json'
+
+# Partial cache file (for resume support)
+PARTIAL_CACHE_FILE = OUTPUT_DIR / 'partial_cache.json'
 
 # Config file path (compatible with HyperparamConfig for run_all_experiments.sh)
 # This goes to Yu's results directory so other scripts can read it
@@ -226,10 +234,47 @@ def cdg_voting(question_data: dict, alpha: float = 0.5, beta: float = 10) -> tup
 
 
 # ============================================================================
+# PARTIAL CACHE FUNCTIONS
+# ============================================================================
+
+def save_partial_cache(all_results: list, completed_configs: list, timestamp: str):
+    """Save partial results for resume support."""
+    with open(PARTIAL_CACHE_FILE, 'w') as f:
+        json.dump({
+            'timestamp': timestamp,
+            'beta_values': BETA_VALUES,
+            'alpha_values': ALPHA_VALUES,
+            'position_pct_values': POSITION_PCT_VALUES,
+            'results': all_results,
+            'completed_configs': completed_configs,  # list of (position_pct, alpha) tuples
+            'is_partial': True,
+        }, f, indent=2)
+    print(f'  [Partial cache saved: {len(completed_configs)} configs done]')
+
+
+def load_partial_cache():
+    """Load partial cache if available."""
+    if not PARTIAL_CACHE_FILE.exists():
+        return [], []
+
+    with open(PARTIAL_CACHE_FILE, 'r') as f:
+        cache_data = json.load(f)
+
+    if not cache_data.get('is_partial', False):
+        return [], []
+
+    completed = cache_data.get('completed_configs', [])
+    # Convert lists back to tuples for comparison
+    completed = [tuple(c) for c in completed]
+    print(f'Found partial cache: {len(completed)} configs completed')
+    return cache_data.get('results', []), completed
+
+
+# ============================================================================
 # MAIN SWEEP
 # ============================================================================
 
-def run_sweep():
+def run_sweep(resume=False):
     """Run full hyperparameter sweep."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -246,19 +291,37 @@ def run_sweep():
     print(f'Output directory: {OUTPUT_DIR}')
     print()
 
+    # Try to resume from partial cache
     all_results = []
+    completed_configs = []
+    if resume:
+        all_results, completed_configs = load_partial_cache()
+        if completed_configs:
+            print(f'Resuming from partial cache. Completed: {completed_configs}')
+        else:
+            print('No partial cache found, starting fresh.')
 
     # Prioritize alpha=0.5, position=10 first
     position_order = [10, 20]
     alpha_order = [0.5, 1.0]
 
     for position_pct in position_order:
-        print()
-        print('#' * 100)
-        print(f'# POSITION PCT = {position_pct}')
-        print('#' * 100)
-
         for alpha in alpha_order:
+            config_key = (position_pct, alpha)
+
+            # Skip already completed configs
+            if config_key in completed_configs:
+                print()
+                print('#' * 100)
+                print(f'# POSITION PCT = {position_pct}, ALPHA = {alpha} [SKIPPED - in cache]')
+                print('#' * 100)
+                continue
+
+            print()
+            print('#' * 100)
+            print(f'# POSITION PCT = {position_pct}')
+            print('#' * 100)
+
             print()
             print(f'--- Alpha = {alpha}, Position = {position_pct} ---')
             print()
@@ -304,6 +367,10 @@ def run_sweep():
                         all_results.append(result)
 
                     print(row)
+
+            # Save partial cache after each (position_pct, alpha) config completes
+            completed_configs.append(config_key)
+            save_partial_cache(all_results, completed_configs, timestamp)
 
     # Save all results to JSON
     output_file = OUTPUT_DIR / f'cdg_sweep_results_{timestamp}.json'
@@ -418,6 +485,11 @@ def run_sweep():
         json.dump(cache_data, f, indent=2)
     print(f'\n*** CACHE SAVED: {CACHE_FILE} ***')
     print('Use --figures-only to regenerate figures without re-running sweep')
+
+    # Clean up partial cache
+    if PARTIAL_CACHE_FILE.exists():
+        PARTIAL_CACHE_FILE.unlink()
+        print('Partial cache cleaned up.')
 
     return all_results, best_params
 
@@ -555,22 +627,92 @@ def generate_figure(all_results: list, output_dir: Path):
     plt.close(fig)
 
 
+def print_tables_from_cache(all_results: list):
+    """Print sweep tables from cached results (same format as during computation)."""
+    print()
+    print('=' * 100)
+    print('SWEEP RESULTS (from cache)')
+    print('=' * 100)
+
+    for position_pct in POSITION_PCT_VALUES:
+        print()
+        print('#' * 100)
+        print(f'# POSITION PCT = {position_pct}')
+        print('#' * 100)
+
+        for alpha in ALPHA_VALUES:
+            print()
+            print(f'--- Alpha = {alpha}, Position = {position_pct} ---')
+            print()
+
+            for model_name in DATASETS.keys():
+                print(f'\n{model_name.upper()}')
+                print('-' * 80)
+
+                # Header
+                header = f"{'Dataset':<15}"
+                for beta in BETA_VALUES:
+                    header += f"β={beta:<6}"
+                print(header)
+
+                for dataset_name in DATASETS[model_name].keys():
+                    row = f"{dataset_name:<15}"
+
+                    for beta in BETA_VALUES:
+                        # Find result in cache
+                        r = next((x for x in all_results
+                                  if x['model'] == model_name and x['dataset'] == dataset_name
+                                  and x['alpha'] == alpha and x['beta'] == beta
+                                  and x['position_pct'] == position_pct), None)
+                        if r:
+                            row += f"{100*r['accuracy']:.1f}%   "
+                        else:
+                            row += f"{'N/A':<7}"
+                    print(row)
+
+    # Print best params
+    print()
+    print('=' * 100)
+    print('BEST PARAMETERS PER MODEL')
+    print('=' * 100)
+
+    for model_name in DATASETS.keys():
+        model_results = [r for r in all_results if r['model'] == model_name]
+        if not model_results:
+            continue
+
+        # Find best
+        best = max(model_results, key=lambda x: x['accuracy'])
+        total_correct = sum(r['correct'] for r in model_results
+                           if r['alpha'] == best['alpha'] and r['beta'] == best['beta']
+                           and r['position_pct'] == best['position_pct'])
+        total = sum(r['total'] for r in model_results
+                   if r['alpha'] == best['alpha'] and r['beta'] == best['beta']
+                   and r['position_pct'] == best['position_pct'])
+
+        print(f"{model_name:<15} alpha={best['alpha']}, beta={best['beta']}, position_pct={best['position_pct']} "
+              f"=> {total_correct}/{total} ({100*best['accuracy']:.1f}%)")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CDG Hyperparameter Sweep')
-    parser.add_argument('--figures-only', action='store_true',
-                        help='Load from cache and regenerate figures only (skip sweep)')
+    parser.add_argument('--no-compute', action='store_true',
+                        help='Load from cache, print tables & regenerate figures (no computation)')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume from partial cache (if interrupted)')
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    if args.figures_only:
+    if args.no_compute:
         print('=' * 100)
-        print('FIGURES-ONLY MODE: Loading from cache')
+        print('NO-COMPUTE MODE: Loading from cache')
         print('=' * 100)
         all_results, best_params = load_cache()
         if all_results is None:
             sys.exit(1)
+        print_tables_from_cache(all_results)
     else:
-        all_results, best_params = run_sweep()
+        all_results, best_params = run_sweep(resume=args.resume)
 
     generate_figure(all_results, OUTPUT_DIR)

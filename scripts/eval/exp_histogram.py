@@ -13,8 +13,12 @@ Metrics:
 5. Confidence Gradient (per trace)
 
 Usage:
-    python scripts/eval/exp_histogram.py
-    python scripts/eval/exp_histogram.py --model deepseek8b --dataset aime2024
+    python exp_histogram.py                            # Run all model/dataset combinations
+    python exp_histogram.py --model deepseek8b --dataset aime2024  # Single combination
+    python exp_histogram.py --no-compute               # Load cache, regenerate figures only
+
+Cache files:
+    results/exp_histogram/cache/{model}_{dataset}_metrics.json
 """
 import pickle
 import numpy as np
@@ -402,9 +406,9 @@ def main():
     parser.add_argument('--model', type=str, default=None, help='Specific model')
     parser.add_argument('--dataset', type=str, default=None, help='Specific dataset')
     parser.add_argument('--all', action='store_true', help='Generate for all combinations')
-    parser.add_argument('--figures-only', action='store_true',
-                        help='Load from cache and regenerate figures only')
-    parser.add_argument('--no-cache', action='store_true',
+    parser.add_argument('--no-compute', action='store_true',
+                        help='Load from cache and regenerate figures only (no computation)')
+    parser.add_argument('--force-recompute', action='store_true',
                         help='Skip cache and always extract fresh metrics')
     args = parser.parse_args()
 
@@ -413,22 +417,22 @@ def main():
     print('=' * 70)
     print('HISTOGRAM FIGURES: Correct vs Wrong Distributions')
     print('=' * 70)
-    if args.figures_only:
-        print('MODE: figures-only (loading from cache)')
-    elif args.no_cache:
-        print('MODE: no-cache (extracting fresh metrics)')
+    if args.no_compute:
+        print('MODE: no-compute (loading from cache)')
+    elif args.force_recompute:
+        print('MODE: force-recompute (extracting fresh metrics)')
 
     def process_pair(model, dataset):
         """Process a single model-dataset pair."""
-        # Try cache first (unless --no-cache)
-        if not args.no_cache:
+        # Try cache first (unless --force-recompute)
+        if not args.force_recompute:
             metrics = load_cache(model, dataset)
             if metrics:
                 generate_figure(model, dataset, metrics, OUTPUT_DIR)
                 return True
 
-        # If figures-only mode and no cache, skip
-        if args.figures_only:
+        # If no-compute mode and no cache, skip
+        if args.no_compute:
             print(f'  WARNING: No cache for {model}-{dataset}, skipping')
             return False
 
@@ -456,7 +460,7 @@ def main():
         process_pair(model, dataset)
 
     print('\n*** Cache is stored in: {} ***'.format(CACHE_DIR))
-    print('Use --figures-only to regenerate figures from cache')
+    print('Use --no-compute to regenerate figures from cache')
     print('\nDone!')
 
 

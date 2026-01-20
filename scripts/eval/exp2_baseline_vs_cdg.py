@@ -14,8 +14,13 @@ Outputs:
 3. Full budget (512) comparison table: all methods × all datasets
 
 Usage:
-    python scripts/eval/exp2_baseline_vs_cdg.py              # Run full analysis
-    python scripts/eval/exp2_baseline_vs_cdg.py --figures-only  # Load cache, regenerate outputs
+    python exp2_baseline_vs_cdg.py              # Run full analysis
+    python exp2_baseline_vs_cdg.py --no-compute # Load cache, print tables & regenerate figures
+    python exp2_baseline_vs_cdg.py --resume     # Resume from partial cache if interrupted
+
+Cache files:
+    results/exp2_baseline_vs_cdg/cache.json         # Final cache for --no-compute
+    results/exp2_baseline_vs_cdg/partial_cache.json # Partial cache for --resume
 """
 import argparse
 import pickle
@@ -87,6 +92,9 @@ OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp2_baseline_vs
 
 # Stable cache file (no timestamp - for quick figure regeneration)
 CACHE_FILE = OUTPUT_DIR / 'cache.json'
+
+# Partial cache file (for resume support)
+PARTIAL_CACHE_FILE = OUTPUT_DIR / 'partial_cache.json'
 
 
 # ============================================================================
@@ -258,7 +266,37 @@ def evaluate_methods(traces: list, gt: str, cdg_params: dict) -> dict:
     return results
 
 
-def run_analysis():
+def save_partial_cache(all_results: list, completed_models: list, timestamp: str):
+    """Save partial results for resume support."""
+    with open(PARTIAL_CACHE_FILE, 'w') as f:
+        json.dump({
+            'timestamp': timestamp,
+            'trace_counts': TRACE_COUNTS,
+            'num_subsamples': NUM_SUBSAMPLES,
+            'cdg_params': CDG_PARAMS,
+            'results': all_results,
+            'completed_models': completed_models,
+            'is_partial': True,
+        }, f, indent=2)
+    print(f'  [Partial cache saved: {len(completed_models)} models done]')
+
+
+def load_partial_cache():
+    """Load partial cache if available."""
+    if not PARTIAL_CACHE_FILE.exists():
+        return None, []
+
+    with open(PARTIAL_CACHE_FILE, 'r') as f:
+        cache_data = json.load(f)
+
+    if not cache_data.get('is_partial', False):
+        return None, []
+
+    print(f'Found partial cache: {cache_data.get("completed_models", [])} completed')
+    return cache_data.get('results', []), cache_data.get('completed_models', [])
+
+
+def run_analysis(resume=False):
     """Run full scaling analysis."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -275,9 +313,24 @@ def run_analysis():
     print(f'Methods: {", ".join(METHOD_LABELS.values())}')
     print()
 
+    # Try to resume from partial cache
     all_results = []
+    completed_models = []
+    if resume:
+        all_results, completed_models = load_partial_cache()
+        if completed_models:
+            print(f'Resuming from partial cache. Skipping: {completed_models}')
+        else:
+            print('No partial cache found, starting fresh.')
 
     for model_name, datasets in DATASETS.items():
+        # Skip already completed models
+        if model_name in completed_models:
+            print(f'\n{"="*80}')
+            print(f'{model_name.upper()} [SKIPPED - already in cache]')
+            print(f'{"="*80}')
+            continue
+
         print(f'\n{"="*80}')
         print(f'{model_name.upper()}')
         print(f'{"="*80}')
@@ -334,7 +387,11 @@ def run_analysis():
                         })
                 print(row)
 
-    # Save results
+        # Save partial cache after each model completes
+        completed_models.append(model_name)
+        save_partial_cache(all_results, completed_models, timestamp)
+
+    # Save final results
     output_file = OUTPUT_DIR / f'results_{timestamp}.json'
     with open(output_file, 'w') as f:
         json.dump({
@@ -357,6 +414,11 @@ def run_analysis():
         }, f, indent=2)
     print(f'\n*** CACHE SAVED: {CACHE_FILE} ***')
     print('Use --figures-only to regenerate outputs without re-running analysis')
+
+    # Clean up partial cache
+    if PARTIAL_CACHE_FILE.exists():
+        PARTIAL_CACHE_FILE.unlink()
+        print('Partial cache cleaned up.')
 
     return all_results
 
@@ -682,21 +744,23 @@ def generate_full_budget_figure(all_results: list, output_dir: Path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Exp 2: Baseline vs CDG Comparison')
-    parser.add_argument('--figures-only', action='store_true',
-                        help='Load from cache and regenerate outputs only')
+    parser.add_argument('--no-compute', action='store_true',
+                        help='Load from cache, print tables & regenerate figures (no computation)')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume from partial cache (if interrupted)')
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    if args.figures_only:
+    if args.no_compute:
         print('=' * 100)
-        print('FIGURES-ONLY MODE: Loading from cache')
+        print('NO-COMPUTE MODE: Loading from cache')
         print('=' * 100)
         all_results = load_cache()
         if all_results is None:
             sys.exit(1)
     else:
-        all_results = run_analysis()
+        all_results = run_analysis(resume=args.resume)
 
     # Generate all outputs
     print('\n' + '=' * 100)
