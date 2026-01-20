@@ -2,29 +2,29 @@
 """
 Exp 2: Baseline Methods vs CDG Comparison
 
-Compares three baseline methods against CDG:
+Compares four methods across different trace budgets (8 -> 512):
 1. Majority Vote - simple count-based voting
 2. Mean Weighted - weighted vote using mean confidence
 3. Top10 Tail Filtered - DeepConf's best method (filter top 10% by tail conf)
 4. CDG - Count-Dampened Gradient (our method)
 
-CDG Parameters (from Yu's optimal settings):
-- DeepSeek-R1-8B: alpha=0.5, beta=10, position_pct=10
-- GPT-OSS-20B: alpha=0.5, beta=10, position_pct=10
-- GEMMA-3-27B: alpha=0.5, beta=3, position_pct=10
-- QWQ-32B: alpha=0.5, beta=3, position_pct=10
-
-Baseline implementation matches Yu's test_other_models.py exactly.
+Outputs:
+1. Scaling trend figure: accuracy vs trace count for each method
+2. Scaling trend table: detailed numbers for all trace counts
+3. Full budget (512) comparison table: all methods × all datasets
 
 Usage:
-    python scripts/eval/exp2_baseline_vs_cdg.py
+    python scripts/eval/exp2_baseline_vs_cdg.py              # Run full analysis
+    python scripts/eval/exp2_baseline_vs_cdg.py --figures-only  # Load cache, regenerate outputs
 """
+import argparse
 import pickle
 import numpy as np
 from pathlib import Path
 from collections import Counter, defaultdict
 import sys
 import json
+import random
 from datetime import datetime
 
 # Use dynasor from conda
@@ -33,7 +33,7 @@ from dynasor.core.evaluator import math_equal
 
 
 # ============================================================================
-# HARDCODED DATA PATHS (Yu's directories - DO NOT MODIFY PICKLE FILES)
+# HARDCODED DATA PATHS (Yu's directories)
 # ============================================================================
 
 DATASETS = {
@@ -63,7 +63,7 @@ DATASETS = {
     },
 }
 
-# CDG optimal parameters per model (from Yu's CDG_ablation_beta_paper.md)
+# CDG optimal parameters per model
 CDG_PARAMS = {
     'deepseek8b': {'alpha': 0.5, 'beta': 10, 'position_pct': 10},
     'gptoss20b': {'alpha': 0.5, 'beta': 10, 'position_pct': 10},
@@ -71,16 +71,29 @@ CDG_PARAMS = {
     'qwq32b': {'alpha': 0.5, 'beta': 3, 'position_pct': 10},
 }
 
-# Output directory
+TRACE_COUNTS = [8, 16, 32, 64, 128, 256, 512]
+NUM_SUBSAMPLES = 5  # Number of random subsamples for variance estimation
+RANDOM_SEED = 42
+
+METHODS = ['majority', 'mean_weighted', 'top10_tail', 'cdg']
+METHOD_LABELS = {
+    'majority': 'Majority',
+    'mean_weighted': 'Mean Weighted',
+    'top10_tail': 'Top10 Tail',
+    'cdg': 'CDG',
+}
+
 OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp2_baseline_vs_cdg'
+
+# Stable cache file (no timestamp - for quick figure regeneration)
+CACHE_FILE = OUTPUT_DIR / 'cache.json'
 
 
 # ============================================================================
-# HELPER FUNCTIONS (matching Yu's test_other_models.py exactly)
+# HELPER FUNCTIONS
 # ============================================================================
 
 def quick_parse(text: str) -> str:
-    """Parse LaTeX text command."""
     if '\\text{' in text and '}' in text:
         while '\\text{' in text:
             start = text.find('\\text{')
@@ -94,7 +107,6 @@ def quick_parse(text: str) -> str:
 
 
 def equal_func(answer: str, ground_truth: str) -> bool:
-    """Check if answer matches ground truth."""
     answer = quick_parse(str(answer))
     ground_truth = quick_parse(str(ground_truth))
     if len(answer) == 1 and answer.isalpha() and len(ground_truth) == 1 and ground_truth.isalpha():
@@ -105,12 +117,7 @@ def equal_func(answer: str, ground_truth: str) -> bool:
         return str(answer).strip() == str(ground_truth).strip()
 
 
-# ============================================================================
-# BASELINE METHODS (exactly matching Yu's test_other_models.py)
-# ============================================================================
-
 def calculate_mean_confidence(trace):
-    """Calculate mean confidence of all tokens in trace."""
     try:
         if 'confs' in trace and trace['confs']:
             return np.mean(trace['confs'])
@@ -120,7 +127,6 @@ def calculate_mean_confidence(trace):
 
 
 def calculate_tail_confidence(trace, tail_tokens=2048):
-    """Calculate mean confidence of last tail_tokens."""
     try:
         if 'confs' in trace and trace['confs']:
             confs = trace['confs']
@@ -131,15 +137,21 @@ def calculate_tail_confidence(trace, tail_tokens=2048):
         return 0.0
 
 
+def compute_gradient(confs, percentile=10):
+    if not confs or len(confs) < 10:
+        return 0.0
+    n = len(confs)
+    cutoff = max(1, int(n * percentile / 100))
+    return np.mean(confs[-cutoff:]) - np.mean(confs[:cutoff])
+
+
 def simple_majority_vote(answers):
-    """Simple majority vote - return most common answer."""
     if not answers:
         return None
     return Counter(answers).most_common(1)[0][0]
 
 
 def weighted_majority_vote(answers, weights):
-    """Weighted majority vote - sum weights per answer."""
     if not answers:
         return None
     answer_weights = {}
@@ -153,7 +165,6 @@ def weighted_majority_vote(answers, weights):
 
 
 def filter_top_confidence(traces, top_percent=0.1):
-    """Filter to top percent traces by tail confidence."""
     if not traces:
         return []
     confidences = [calculate_tail_confidence(t) for t in traces]
@@ -161,42 +172,20 @@ def filter_top_confidence(traces, top_percent=0.1):
     return [t for t, c in zip(traces, confidences) if c >= threshold]
 
 
-# ============================================================================
-# CDG METHOD (matching Yu's CDG_ablation_beta_paper.py)
-# ============================================================================
-
-def compute_gradient(confs, percentile=10):
-    """Compute gradient: mean(last percentile%) - mean(first percentile%)"""
-    if not confs or len(confs) < 10:
-        return 0.0
-    n = len(confs)
-    cutoff = max(1, int(n * percentile / 100))
-    return np.mean(confs[-cutoff:]) - np.mean(confs[:cutoff])
-
-
-def cdg_vote(traces, alpha=0.5, beta=10, position_pct=10):
-    """
-    CDG voting on a list of traces.
-
-    Formula: score = count^alpha * mean(mean_conf + beta * gradient)
-    """
+def cdg_vote(traces, alpha, beta, position_pct):
     if not traces:
         return None
-
     answer_scores = defaultdict(list)
     for trace in traces:
         answer = trace.get('extracted_answer')
         confs = trace.get('confs', [])
-
         if answer is not None and len(confs) >= 10:
             mean_conf = np.mean(confs)
             gradient = compute_gradient(confs, percentile=position_pct)
             score = mean_conf + beta * gradient
             answer_scores[answer].append(score)
-
     if not answer_scores:
         return None
-
     final_scores = {
         ans: (len(scores) ** alpha) * np.mean(scores)
         for ans, scores in answer_scores.items()
@@ -205,13 +194,12 @@ def cdg_vote(traces, alpha=0.5, beta=10, position_pct=10):
 
 
 # ============================================================================
-# EVALUATION
+# DATA LOADING AND EVALUATION
 # ============================================================================
 
-def load_pickle_files(results_dir: str) -> list:
-    """Load all pickle files from directory."""
-    results_dir = Path(results_dir)
-
+def load_all_questions(dataset_path: str) -> list:
+    """Load all questions from a dataset."""
+    results_dir = Path(dataset_path)
     pkl_files = sorted(results_dir.glob('qid*.pkl'))
     if not pkl_files:
         for subdir in results_dir.iterdir():
@@ -220,192 +208,512 @@ def load_pickle_files(results_dir: str) -> list:
                 if pkl_files:
                     break
 
-    return pkl_files
-
-
-def evaluate_dataset(dataset_path: str, cdg_params: dict) -> dict:
-    """
-    Evaluate all 4 methods on a single dataset.
-
-    Returns dict with counts for each method.
-    """
-    pkl_files = load_pickle_files(dataset_path)
-
-    if not pkl_files:
-        return None
-
-    results = {
-        'majority': {'correct': 0, 'total': 0},
-        'mean_weighted': {'correct': 0, 'total': 0},
-        'top10_tail': {'correct': 0, 'total': 0},
-        'cdg': {'correct': 0, 'total': 0},
-    }
-
+    questions = []
     for pkl_file in pkl_files:
         with open(pkl_file, 'rb') as f:
             data = pickle.load(f)
+        questions.append(data)
 
-        gt = data['ground_truth']
-        valid_traces = [t for t in data['all_traces'] if t.get('extracted_answer')]
+    return questions
 
-        if not valid_traces:
-            continue
 
-        answers = [t['extracted_answer'] for t in valid_traces]
+def evaluate_methods(traces: list, gt: str, cdg_params: dict) -> dict:
+    """Evaluate all methods on a set of traces."""
+    valid_traces = [t for t in traces if t.get('extracted_answer')]
+    if not valid_traces:
+        return None
 
-        # 1. Majority Vote
-        results['majority']['total'] += 1
-        winner = simple_majority_vote(answers)
-        if winner and equal_func(str(winner), str(gt)):
-            results['majority']['correct'] += 1
+    answers = [t['extracted_answer'] for t in valid_traces]
+    results = {}
 
-        # 2. Mean Confidence Weighted
-        results['mean_weighted']['total'] += 1
-        mean_confs = [calculate_mean_confidence(t) for t in valid_traces]
-        if any(c > 0 for c in mean_confs):
-            winner = weighted_majority_vote(answers, mean_confs)
-            if winner and equal_func(str(winner), str(gt)):
-                results['mean_weighted']['correct'] += 1
+    # 1. Majority Vote
+    winner = simple_majority_vote(answers)
+    results['majority'] = equal_func(str(winner), str(gt)) if winner else False
 
-        # 3. Top 10% Tail Filtered
-        results['top10_tail']['total'] += 1
-        top_traces = filter_top_confidence(valid_traces, 0.1)
-        if top_traces:
-            top_answers = [t['extracted_answer'] for t in top_traces]
-            top_confs = [calculate_tail_confidence(t) for t in top_traces]
-            if any(c > 0 for c in top_confs):
-                winner = weighted_majority_vote(top_answers, top_confs)
-                if winner and equal_func(str(winner), str(gt)):
-                    results['top10_tail']['correct'] += 1
+    # 2. Mean Weighted
+    mean_confs = [calculate_mean_confidence(t) for t in valid_traces]
+    if any(c > 0 for c in mean_confs):
+        winner = weighted_majority_vote(answers, mean_confs)
+        results['mean_weighted'] = equal_func(str(winner), str(gt)) if winner else False
+    else:
+        results['mean_weighted'] = False
 
-        # 4. CDG
-        results['cdg']['total'] += 1
-        winner = cdg_vote(
-            valid_traces,
-            alpha=cdg_params['alpha'],
-            beta=cdg_params['beta'],
-            position_pct=cdg_params['position_pct']
-        )
-        if winner and equal_func(str(winner), str(gt)):
-            results['cdg']['correct'] += 1
+    # 3. Top 10% Tail
+    top_traces = filter_top_confidence(valid_traces, 0.1)
+    if top_traces:
+        top_answers = [t['extracted_answer'] for t in top_traces]
+        top_confs = [calculate_tail_confidence(t) for t in top_traces]
+        if any(c > 0 for c in top_confs):
+            winner = weighted_majority_vote(top_answers, top_confs)
+            results['top10_tail'] = equal_func(str(winner), str(gt)) if winner else False
+        else:
+            results['top10_tail'] = False
+    else:
+        results['top10_tail'] = False
+
+    # 4. CDG
+    winner = cdg_vote(valid_traces, cdg_params['alpha'], cdg_params['beta'], cdg_params['position_pct'])
+    results['cdg'] = equal_func(str(winner), str(gt)) if winner else False
 
     return results
 
 
-def run_comparison():
-    """Run full comparison of baselines vs CDG."""
+def run_analysis():
+    """Run full scaling analysis."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    random.seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
 
-    print('=' * 120)
-    print('EXP 2: BASELINE METHODS VS CDG COMPARISON')
-    print('=' * 120)
+    print('=' * 100)
+    print('EXP 2: BASELINE VS CDG - SCALING ANALYSIS')
+    print('=' * 100)
     print()
-    print('Methods:')
-    print('  1. Majority Vote - simple count-based voting')
-    print('  2. Mean Weighted - weighted vote using mean confidence')
-    print('  3. Top10 Tail - filter top 10% by tail conf, then weighted vote (DeepConf baseline)')
-    print('  4. CDG - Count-Dampened Gradient (our method)')
-    print()
-    print('CDG Parameters:')
-    for model, params in CDG_PARAMS.items():
-        print(f"  {model}: alpha={params['alpha']}, beta={params['beta']}, position_pct={params['position_pct']}")
+    print(f'Trace counts: {TRACE_COUNTS}')
+    print(f'Subsamples per count: {NUM_SUBSAMPLES}')
+    print(f'Methods: {", ".join(METHOD_LABELS.values())}')
     print()
 
-    all_results = {}
+    all_results = []
 
     for model_name, datasets in DATASETS.items():
-        print()
-        print('=' * 120)
-        print(f'{model_name.upper()} RESULTS')
-        print('=' * 120)
+        print(f'\n{"="*80}')
+        print(f'{model_name.upper()}')
+        print(f'{"="*80}')
 
         cdg_params = CDG_PARAMS[model_name]
-        print(f"CDG params: alpha={cdg_params['alpha']}, beta={cdg_params['beta']}, position_pct={cdg_params['position_pct']}")
-        print()
-
-        # Header
-        print(f"{'Dataset':<15} {'Majority':<18} {'Mean Weighted':<18} {'Top10 Tail':<18} {'CDG':<18}")
-        print('-' * 120)
-
-        model_totals = {
-            'majority': {'correct': 0, 'total': 0},
-            'mean_weighted': {'correct': 0, 'total': 0},
-            'top10_tail': {'correct': 0, 'total': 0},
-            'cdg': {'correct': 0, 'total': 0},
-        }
-
-        model_results = {}
+        print(f'CDG params: alpha={cdg_params["alpha"]}, beta={cdg_params["beta"]}, position_pct={cdg_params["position_pct"]}')
 
         for dataset_name, dataset_path in datasets.items():
-            results = evaluate_dataset(dataset_path, cdg_params)
+            print(f'\n--- {dataset_name} ---')
 
-            if results is None:
-                print(f"{dataset_name:<15} [NO DATA]")
+            questions = load_all_questions(dataset_path)
+            if not questions:
+                print(f'  [NO DATA]')
                 continue
 
-            model_results[dataset_name] = results
+            print(f'  Loaded {len(questions)} questions')
 
-            # Print row
-            row = f"{dataset_name:<15}"
-            for method in ['majority', 'mean_weighted', 'top10_tail', 'cdg']:
-                c, t = results[method]['correct'], results[method]['total']
-                pct = 100 * c / t if t > 0 else 0
-                row += f"{c}/{t} ({pct:.1f}%)     "
-                model_totals[method]['correct'] += c
-                model_totals[method]['total'] += t
-            print(row)
+            for trace_count in TRACE_COUNTS:
+                method_correct = defaultdict(list)
 
-        # Print totals
-        print('-' * 120)
-        row = f"{'TOTAL':<15}"
-        for method in ['majority', 'mean_weighted', 'top10_tail', 'cdg']:
-            c, t = model_totals[method]['correct'], model_totals[method]['total']
-            pct = 100 * c / t if t > 0 else 0
-            row += f"{c}/{t} ({pct:.1f}%)     "
-        print(row)
+                for subsample_idx in range(NUM_SUBSAMPLES):
+                    # Evaluate each question
+                    for q in questions:
+                        gt = q['ground_truth']
+                        all_traces = q['all_traces']
 
-        all_results[model_name] = {
-            'datasets': model_results,
-            'totals': model_totals,
-            'cdg_params': cdg_params,
-        }
+                        # Subsample traces
+                        if trace_count >= len(all_traces):
+                            sampled_traces = all_traces
+                        else:
+                            sampled_traces = random.sample(all_traces, trace_count)
 
-    # Grand summary
-    print()
-    print('=' * 120)
-    print('GRAND SUMMARY')
-    print('=' * 120)
-    print()
-    print(f"{'Model':<15} {'Majority':<15} {'Mean Weighted':<15} {'Top10 Tail':<15} {'CDG':<15} {'CDG vs Maj':<12} {'CDG vs Top10':<12}")
-    print('-' * 120)
+                        results = evaluate_methods(sampled_traces, gt, cdg_params)
+                        if results:
+                            for method, correct in results.items():
+                                method_correct[method].append(1 if correct else 0)
 
-    for model_name in DATASETS.keys():
-        totals = all_results[model_name]['totals']
+                # Compute accuracy for each method
+                row = f'  n={trace_count:<4}'
+                for method in METHODS:
+                    if method_correct[method]:
+                        acc = np.mean(method_correct[method])
+                        std = np.std(method_correct[method]) / np.sqrt(len(method_correct[method]))
+                        row += f'  {METHOD_LABELS[method]}: {100*acc:.1f}%'
 
-        maj_acc = totals['majority']['correct'] / totals['majority']['total'] if totals['majority']['total'] > 0 else 0
-        mean_acc = totals['mean_weighted']['correct'] / totals['mean_weighted']['total'] if totals['mean_weighted']['total'] > 0 else 0
-        top10_acc = totals['top10_tail']['correct'] / totals['top10_tail']['total'] if totals['top10_tail']['total'] > 0 else 0
-        cdg_acc = totals['cdg']['correct'] / totals['cdg']['total'] if totals['cdg']['total'] > 0 else 0
-
-        cdg_vs_maj = cdg_acc - maj_acc
-        cdg_vs_top10 = cdg_acc - top10_acc
-
-        print(f"{model_name:<15} {100*maj_acc:.1f}%          {100*mean_acc:.1f}%          {100*top10_acc:.1f}%          {100*cdg_acc:.1f}%          {100*cdg_vs_maj:+.1f}%        {100*cdg_vs_top10:+.1f}%")
+                        all_results.append({
+                            'model': model_name,
+                            'dataset': dataset_name,
+                            'trace_count': trace_count,
+                            'method': method,
+                            'accuracy': acc,
+                            'std': std,
+                            'n_samples': len(method_correct[method]),
+                        })
+                print(row)
 
     # Save results
-    output_file = OUTPUT_DIR / f'baseline_vs_cdg_{timestamp}.json'
+    output_file = OUTPUT_DIR / f'results_{timestamp}.json'
     with open(output_file, 'w') as f:
         json.dump({
             'timestamp': timestamp,
+            'trace_counts': TRACE_COUNTS,
+            'num_subsamples': NUM_SUBSAMPLES,
             'cdg_params': CDG_PARAMS,
             'results': all_results,
-        }, f, indent=2, default=str)
+        }, f, indent=2)
     print(f'\nResults saved to: {output_file}')
+
+    # Save to stable cache file (for --figures-only mode)
+    with open(CACHE_FILE, 'w') as f:
+        json.dump({
+            'timestamp': timestamp,
+            'trace_counts': TRACE_COUNTS,
+            'num_subsamples': NUM_SUBSAMPLES,
+            'cdg_params': CDG_PARAMS,
+            'results': all_results,
+        }, f, indent=2)
+    print(f'\n*** CACHE SAVED: {CACHE_FILE} ***')
+    print('Use --figures-only to regenerate outputs without re-running analysis')
 
     return all_results
 
 
+def load_cache():
+    """Load results from cache file."""
+    if not CACHE_FILE.exists():
+        print(f'ERROR: Cache file not found: {CACHE_FILE}')
+        print('Run without --figures-only first to generate cache.')
+        return None
+
+    with open(CACHE_FILE, 'r') as f:
+        cache_data = json.load(f)
+
+    print(f'Loaded cache from: {CACHE_FILE}')
+    print(f'  Timestamp: {cache_data.get("timestamp", "unknown")}')
+    print(f'  Results: {len(cache_data["results"])} entries')
+
+    return cache_data['results']
+
+
+# ============================================================================
+# OUTPUT: SCALING TREND FIGURE
+# ============================================================================
+
+def generate_scaling_figure(all_results: list, output_dir: Path):
+    """Generate scaling trend figure: accuracy vs trace count."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not available, skipping figure generation")
+        return
+
+    models = list(DATASETS.keys())
+    datasets = list(DATASETS[models[0]].keys())
+
+    fig, axes = plt.subplots(len(models), len(datasets),
+                              figsize=(4 * len(datasets), 3 * len(models)),
+                              squeeze=False)
+
+    method_styles = {
+        'majority': {'color': '#1f77b4', 'marker': 'o', 'linestyle': '-'},
+        'mean_weighted': {'color': '#ff7f0e', 'marker': 's', 'linestyle': '--'},
+        'top10_tail': {'color': '#2ca02c', 'marker': '^', 'linestyle': '-.'},
+        'cdg': {'color': '#d62728', 'marker': 'D', 'linestyle': '-'},
+    }
+
+    for row_idx, model in enumerate(models):
+        for col_idx, dataset in enumerate(datasets):
+            ax = axes[row_idx, col_idx]
+
+            for method in METHODS:
+                style = method_styles[method]
+                # Filter results for this model/dataset/method
+                method_results = [r for r in all_results
+                                  if r['model'] == model and r['dataset'] == dataset and r['method'] == method]
+
+                if method_results:
+                    method_results.sort(key=lambda x: x['trace_count'])
+                    x = [r['trace_count'] for r in method_results]
+                    y = [100 * r['accuracy'] for r in method_results]
+
+                    ax.plot(x, y,
+                           color=style['color'],
+                           marker=style['marker'],
+                           linestyle=style['linestyle'],
+                           label=METHOD_LABELS[method],
+                           linewidth=2, markersize=5)
+
+            ax.set_xscale('log', base=2)
+            ax.set_xlabel('Number of Traces', fontsize=10)
+            ax.set_ylabel('Accuracy (%)', fontsize=10)
+            ax.set_title(f'{model} - {dataset}', fontsize=11)
+            ax.set_ylim(0, 100)
+            ax.grid(True, alpha=0.3)
+            ax.set_xticks(TRACE_COUNTS)
+            ax.set_xticklabels([str(t) for t in TRACE_COUNTS], fontsize=8)
+
+            if row_idx == 0 and col_idx == 0:
+                ax.legend(loc='lower right', fontsize=8)
+
+    plt.suptitle('Accuracy vs Number of Traces', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+
+    fig_path = output_dir / 'scaling_trend.png'
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
+    print(f'Scaling figure saved to: {fig_path}')
+    plt.close(fig)
+
+
+# ============================================================================
+# OUTPUT: SCALING TREND TABLE
+# ============================================================================
+
+def generate_scaling_table(all_results: list, output_dir: Path):
+    """Generate scaling trend table as text and CSV."""
+    models = list(DATASETS.keys())
+    datasets = list(DATASETS[models[0]].keys())
+
+    lines = []
+    lines.append('=' * 120)
+    lines.append('SCALING TREND TABLE: Accuracy (%) at Different Trace Counts')
+    lines.append('=' * 120)
+
+    for model in models:
+        lines.append(f'\n{model.upper()}')
+        lines.append('-' * 100)
+
+        for dataset in datasets:
+            lines.append(f'\n  {dataset}:')
+
+            # Header
+            header = '    Traces  '
+            for method in METHODS:
+                header += f'{METHOD_LABELS[method]:<15}'
+            lines.append(header)
+
+            for trace_count in TRACE_COUNTS:
+                row = f'    {trace_count:<8}'
+                for method in METHODS:
+                    r = next((x for x in all_results
+                              if x['model'] == model and x['dataset'] == dataset
+                              and x['trace_count'] == trace_count and x['method'] == method), None)
+                    if r:
+                        row += f'{100*r["accuracy"]:.1f}%          '
+                    else:
+                        row += f'{"N/A":<15}'
+                lines.append(row)
+
+    # Print to console
+    table_text = '\n'.join(lines)
+    print(table_text)
+
+    # Save as text file
+    txt_path = output_dir / 'scaling_table.txt'
+    with open(txt_path, 'w') as f:
+        f.write(table_text)
+    print(f'\nScaling table saved to: {txt_path}')
+
+    # Save as CSV
+    csv_lines = ['model,dataset,trace_count,method,accuracy,std']
+    for r in all_results:
+        csv_lines.append(f'{r["model"]},{r["dataset"]},{r["trace_count"]},{r["method"]},{r["accuracy"]:.4f},{r.get("std", 0):.4f}')
+
+    csv_path = output_dir / 'scaling_table.csv'
+    with open(csv_path, 'w') as f:
+        f.write('\n'.join(csv_lines))
+    print(f'CSV saved to: {csv_path}')
+
+
+# ============================================================================
+# OUTPUT: 512-ONLY COMPARISON TABLE
+# ============================================================================
+
+def generate_full_budget_table(all_results: list, output_dir: Path):
+    """Generate 512-only comparison table: all methods × all datasets."""
+    models = list(DATASETS.keys())
+    datasets = list(DATASETS[models[0]].keys())
+
+    # Filter to 512 traces only
+    results_512 = [r for r in all_results if r['trace_count'] == 512]
+
+    lines = []
+    lines.append('')
+    lines.append('=' * 140)
+    lines.append('FULL BUDGET (512 TRACES) COMPARISON: All Methods × All Datasets')
+    lines.append('=' * 140)
+
+    # Per-model tables
+    for model in models:
+        lines.append(f'\n{model.upper()}')
+        lines.append('-' * 120)
+
+        # Header
+        header = f'{"Dataset":<15}'
+        for method in METHODS:
+            header += f'{METHOD_LABELS[method]:<18}'
+        header += f'{"CDG vs Maj":<12}{"CDG vs Top10":<12}'
+        lines.append(header)
+
+        model_totals = {m: {'correct': 0, 'total': 0} for m in METHODS}
+
+        for dataset in datasets:
+            row = f'{dataset:<15}'
+
+            method_accs = {}
+            for method in METHODS:
+                r = next((x for x in results_512
+                          if x['model'] == model and x['dataset'] == dataset and x['method'] == method), None)
+                if r:
+                    acc = r['accuracy']
+                    method_accs[method] = acc
+                    row += f'{100*acc:.1f}%             '
+                    # For totals (approximate)
+                    model_totals[method]['correct'] += acc * r.get('n_samples', 1)
+                    model_totals[method]['total'] += r.get('n_samples', 1)
+                else:
+                    method_accs[method] = 0
+                    row += f'{"N/A":<18}'
+
+            # Deltas
+            cdg_vs_maj = method_accs.get('cdg', 0) - method_accs.get('majority', 0)
+            cdg_vs_top10 = method_accs.get('cdg', 0) - method_accs.get('top10_tail', 0)
+            row += f'{100*cdg_vs_maj:+.1f}%       {100*cdg_vs_top10:+.1f}%'
+            lines.append(row)
+
+        # Model totals
+        lines.append('-' * 120)
+        row = f'{"TOTAL":<15}'
+        total_accs = {}
+        for method in METHODS:
+            if model_totals[method]['total'] > 0:
+                acc = model_totals[method]['correct'] / model_totals[method]['total']
+                total_accs[method] = acc
+                row += f'{100*acc:.1f}%             '
+            else:
+                total_accs[method] = 0
+                row += f'{"N/A":<18}'
+
+        cdg_vs_maj = total_accs.get('cdg', 0) - total_accs.get('majority', 0)
+        cdg_vs_top10 = total_accs.get('cdg', 0) - total_accs.get('top10_tail', 0)
+        row += f'{100*cdg_vs_maj:+.1f}%       {100*cdg_vs_top10:+.1f}%'
+        lines.append(row)
+
+    # Grand summary across all models
+    lines.append('')
+    lines.append('=' * 140)
+    lines.append('GRAND SUMMARY (512 traces)')
+    lines.append('=' * 140)
+
+    header = f'{"Model":<15}'
+    for method in METHODS:
+        header += f'{METHOD_LABELS[method]:<15}'
+    header += f'{"CDG vs Maj":<12}{"CDG vs Top10":<12}'
+    lines.append(header)
+    lines.append('-' * 120)
+
+    for model in models:
+        row = f'{model:<15}'
+        model_accs = {}
+
+        for method in METHODS:
+            model_results = [r for r in results_512 if r['model'] == model and r['method'] == method]
+            if model_results:
+                avg_acc = np.mean([r['accuracy'] for r in model_results])
+                model_accs[method] = avg_acc
+                row += f'{100*avg_acc:.1f}%          '
+            else:
+                model_accs[method] = 0
+                row += f'{"N/A":<15}'
+
+        cdg_vs_maj = model_accs.get('cdg', 0) - model_accs.get('majority', 0)
+        cdg_vs_top10 = model_accs.get('cdg', 0) - model_accs.get('top10_tail', 0)
+        row += f'{100*cdg_vs_maj:+.1f}%       {100*cdg_vs_top10:+.1f}%'
+        lines.append(row)
+
+    # Print to console
+    table_text = '\n'.join(lines)
+    print(table_text)
+
+    # Save as text file
+    txt_path = output_dir / 'full_budget_512_table.txt'
+    with open(txt_path, 'w') as f:
+        f.write(table_text)
+    print(f'\n512-only table saved to: {txt_path}')
+
+
+# ============================================================================
+# OUTPUT: FULL BUDGET BAR CHART
+# ============================================================================
+
+def generate_full_budget_figure(all_results: list, output_dir: Path):
+    """Generate bar chart comparing methods at 512 traces."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not available, skipping figure generation")
+        return
+
+    # Filter to 512 traces only
+    results_512 = [r for r in all_results if r['trace_count'] == 512]
+
+    models = list(DATASETS.keys())
+    x = np.arange(len(models))
+    width = 0.2
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    for i, method in enumerate(METHODS):
+        accs = []
+        for model in models:
+            model_results = [r for r in results_512 if r['model'] == model and r['method'] == method]
+            if model_results:
+                avg_acc = np.mean([r['accuracy'] for r in model_results])
+                accs.append(100 * avg_acc)
+            else:
+                accs.append(0)
+        ax.bar(x + i * width, accs, width, label=METHOD_LABELS[method], color=colors[i])
+
+    ax.set_xlabel('Model', fontsize=12)
+    ax.set_ylabel('Accuracy (%)', fontsize=12)
+    ax.set_title('Method Comparison at Full Budget (512 Traces)', fontsize=14)
+    ax.set_xticks(x + width * 1.5)
+    ax.set_xticklabels(models)
+    ax.legend(loc='upper left')
+    ax.set_ylim(0, 100)
+    ax.grid(True, alpha=0.3, axis='y')
+
+    plt.tight_layout()
+
+    fig_path = output_dir / 'full_budget_512_comparison.png'
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
+    print(f'512-only figure saved to: {fig_path}')
+    plt.close(fig)
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
 if __name__ == '__main__':
-    run_comparison()
+    parser = argparse.ArgumentParser(description='Exp 2: Baseline vs CDG Comparison')
+    parser.add_argument('--figures-only', action='store_true',
+                        help='Load from cache and regenerate outputs only')
+    args = parser.parse_args()
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.figures_only:
+        print('=' * 100)
+        print('FIGURES-ONLY MODE: Loading from cache')
+        print('=' * 100)
+        all_results = load_cache()
+        if all_results is None:
+            sys.exit(1)
+    else:
+        all_results = run_analysis()
+
+    # Generate all outputs
+    print('\n' + '=' * 100)
+    print('GENERATING OUTPUTS')
+    print('=' * 100)
+
+    generate_scaling_figure(all_results, OUTPUT_DIR)
+    generate_scaling_table(all_results, OUTPUT_DIR)
+    generate_full_budget_table(all_results, OUTPUT_DIR)
+    generate_full_budget_figure(all_results, OUTPUT_DIR)
+
+    print('\n' + '=' * 100)
+    print('ALL OUTPUTS GENERATED')
+    print('=' * 100)
+    print(f'Output directory: {OUTPUT_DIR}')
+    print('Files:')
+    print('  - scaling_trend.png/pdf     (accuracy vs trace count figure)')
+    print('  - scaling_table.txt/csv     (detailed numbers for all trace counts)')
+    print('  - full_budget_512_table.txt (512-only comparison)')
+    print('  - full_budget_512_comparison.png/pdf (512-only bar chart)')

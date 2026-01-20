@@ -13,8 +13,10 @@ Formula: score = count^alpha * mean(mean_conf + beta * gradient)
 Where gradient = mean(last P%) - mean(first P%)
 
 Usage:
-    python scripts/eval/exp3_cdg_hyperparam_sweep.py
+    python scripts/eval/exp3_cdg_hyperparam_sweep.py              # Run full sweep
+    python scripts/eval/exp3_cdg_hyperparam_sweep.py --figures-only  # Load cache, regenerate figures
 """
+import argparse
 import pickle
 import numpy as np
 from pathlib import Path
@@ -66,6 +68,14 @@ POSITION_PCT_VALUES = [10, 20]
 
 # Output directory for results (local - small files only)
 OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp3_cdg_sweep'
+
+# Stable cache file (no timestamp - for quick figure regeneration)
+CACHE_FILE = OUTPUT_DIR / 'sweep_cache.json'
+
+# Config file path (compatible with HyperparamConfig for run_all_experiments.sh)
+# This goes to Yu's results directory so other scripts can read it
+CONFIG_OUTPUT_DIR = Path('/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper')
+CONFIG_FILENAME = 'cdg_hyperparams.json'
 
 
 # ============================================================================
@@ -347,14 +357,220 @@ def run_sweep():
             print(f"{model_name:<15} alpha={alpha}, beta={beta}, position_pct={position_pct} "
                   f"=> {scores['correct']}/{scores['total']} ({100*best_acc:.1f}%)")
 
-    # Save best params
+    # Save best params (simple format)
     best_params_file = OUTPUT_DIR / f'best_params_{timestamp}.json'
     with open(best_params_file, 'w') as f:
         json.dump(best_params, f, indent=2)
     print(f'\nBest params saved to: {best_params_file}')
 
+    # Also save in HyperparamConfig format (compatible with run_all_experiments.sh)
+    hyperparam_config = {
+        'version': '1.0',
+        'updated_at': datetime.now().isoformat(),
+        'defaults': {
+            'alpha': 0.5,
+            'beta': 10,
+            'position_pct': 20,
+        },
+        'models': {}
+    }
+
+    for model_name, params in best_params.items():
+        hyperparam_config['models'][model_name] = {
+            'alpha': params['alpha'],
+            'beta': params['beta'],
+            'position_pct': params['position_pct'],
+            'accuracy': params['accuracy'],
+            'tuned_at': datetime.now().isoformat(),
+            'tuning_details': {
+                'correct': params['correct'],
+                'total': params['total'],
+                'sweep_type': 'beta',
+                'beta_values': BETA_VALUES,
+                'alpha_values': ALPHA_VALUES,
+                'position_pct_values': POSITION_PCT_VALUES,
+            }
+        }
+
+    # Save to CONFIG_OUTPUT_DIR (Yu's directory)
+    CONFIG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    config_file = CONFIG_OUTPUT_DIR / CONFIG_FILENAME
+    with open(config_file, 'w') as f:
+        json.dump(hyperparam_config, f, indent=2)
+    print(f'HyperparamConfig saved to: {config_file}')
+
+    # Also save locally
+    local_config_file = OUTPUT_DIR / CONFIG_FILENAME
+    with open(local_config_file, 'w') as f:
+        json.dump(hyperparam_config, f, indent=2)
+    print(f'Local copy saved to: {local_config_file}')
+
+    # Save to stable cache file (for --figures-only mode)
+    cache_data = {
+        'timestamp': timestamp,
+        'beta_values': BETA_VALUES,
+        'alpha_values': ALPHA_VALUES,
+        'position_pct_values': POSITION_PCT_VALUES,
+        'results': all_results,
+        'best_params': best_params,
+    }
+    with open(CACHE_FILE, 'w') as f:
+        json.dump(cache_data, f, indent=2)
+    print(f'\n*** CACHE SAVED: {CACHE_FILE} ***')
+    print('Use --figures-only to regenerate figures without re-running sweep')
+
     return all_results, best_params
 
 
+def load_cache():
+    """Load results from cache file."""
+    if not CACHE_FILE.exists():
+        print(f'ERROR: Cache file not found: {CACHE_FILE}')
+        print('Run without --figures-only first to generate cache.')
+        return None, None
+
+    with open(CACHE_FILE, 'r') as f:
+        cache_data = json.load(f)
+
+    print(f'Loaded cache from: {CACHE_FILE}')
+    print(f'  Timestamp: {cache_data.get("timestamp", "unknown")}')
+    print(f'  Results: {len(cache_data["results"])} entries')
+
+    return cache_data['results'], cache_data.get('best_params', {})
+
+
+def generate_figure(all_results: list, output_dir: Path):
+    """Generate beta sweep figure from results."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib.cm as cm
+    except ImportError:
+        print("matplotlib not available, skipping figure generation")
+        return
+
+    # Group results by (model, dataset, alpha, position_pct)
+    grouped = defaultdict(lambda: defaultdict(list))
+    for r in all_results:
+        key = (r['model'], r['dataset'], r['alpha'], r['position_pct'])
+        grouped[key][r['beta']].append(r['accuracy'])
+
+    # Create figure for each position_pct
+    for position_pct in POSITION_PCT_VALUES:
+        fig, axes = plt.subplots(len(DATASETS), len(ALPHA_VALUES),
+                                  figsize=(4 * len(ALPHA_VALUES), 3.5 * len(DATASETS)),
+                                  squeeze=False)
+
+        colors = {
+            'deepseek8b': '#1f77b4',
+            'gptoss20b': '#ff7f0e',
+            'gemma3_27b': '#2ca02c',
+            'qwq32b': '#d62728',
+        }
+
+        for row_idx, model in enumerate(DATASETS.keys()):
+            for col_idx, alpha in enumerate(ALPHA_VALUES):
+                ax = axes[row_idx, col_idx]
+
+                for dataset in DATASETS[model].keys():
+                    key = (model, dataset, alpha, position_pct)
+                    if key in grouped:
+                        beta_data = grouped[key]
+                        betas = sorted(beta_data.keys())
+                        accs = [100 * np.mean(beta_data[b]) for b in betas]
+
+                        ax.plot(betas, accs, 'o-', label=dataset,
+                               linewidth=2, markersize=5)
+
+                ax.set_xlabel('β (gradient weight)', fontsize=10)
+                ax.set_ylabel('Accuracy (%)', fontsize=10)
+                ax.set_title(f'{model} (α={alpha})', fontsize=11)
+                ax.legend(loc='best', fontsize=8)
+                ax.grid(True, alpha=0.3)
+                ax.set_ylim(0, 100)
+
+        plt.suptitle(f'CDG Beta Sweep (position_pct={position_pct}%)', fontsize=14, fontweight='bold')
+        plt.tight_layout()
+
+        fig_path = output_dir / f'beta_sweep_pos{position_pct}.png'
+        plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+        plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
+        print(f'Figure saved to: {fig_path}')
+        plt.close(fig)
+
+    # Also create a summary figure: best accuracy per model across all params
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+    model_names = list(DATASETS.keys())
+    x = np.arange(len(model_names))
+    width = 0.2
+
+    for i, position_pct in enumerate(POSITION_PCT_VALUES):
+        for j, alpha in enumerate(ALPHA_VALUES):
+            best_accs = []
+            for model in model_names:
+                # Find best beta for this model/alpha/position
+                model_best = 0
+                for dataset in DATASETS[model].keys():
+                    key = (model, dataset, alpha, position_pct)
+                    if key in grouped:
+                        for beta, accs in grouped[key].items():
+                            model_best = max(model_best, 100 * np.mean(accs))
+                best_accs.append(model_best)
+
+    # Simplified: just show best overall per model
+    best_per_model = []
+    best_params_per_model = []
+    for model in model_names:
+        best = 0
+        best_p = None
+        for r in all_results:
+            if r['model'] == model and r['accuracy'] > best:
+                best = r['accuracy']
+                best_p = (r['alpha'], r['beta'], r['position_pct'])
+        best_per_model.append(100 * best)
+        best_params_per_model.append(best_p)
+
+    bars = ax.bar(x, best_per_model, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
+
+    ax.set_xlabel('Model', fontsize=12)
+    ax.set_ylabel('Best Accuracy (%)', fontsize=12)
+    ax.set_title('Best CDG Accuracy per Model', fontsize=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_names)
+    ax.set_ylim(0, 100)
+
+    # Add param labels on bars
+    for i, (bar, params) in enumerate(zip(bars, best_params_per_model)):
+        if params:
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
+                   f'α={params[0]}\nβ={params[1]}\nP={params[2]}%',
+                   ha='center', va='bottom', fontsize=8)
+
+    plt.tight_layout()
+
+    fig_path = output_dir / 'best_accuracy_summary.png'
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
+    print(f'Summary figure saved to: {fig_path}')
+    plt.close(fig)
+
+
 if __name__ == '__main__':
-    run_sweep()
+    parser = argparse.ArgumentParser(description='CDG Hyperparameter Sweep')
+    parser.add_argument('--figures-only', action='store_true',
+                        help='Load from cache and regenerate figures only (skip sweep)')
+    args = parser.parse_args()
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.figures_only:
+        print('=' * 100)
+        print('FIGURES-ONLY MODE: Loading from cache')
+        print('=' * 100)
+        all_results, best_params = load_cache()
+        if all_results is None:
+            sys.exit(1)
+    else:
+        all_results, best_params = run_sweep()
+
+    generate_figure(all_results, OUTPUT_DIR)
