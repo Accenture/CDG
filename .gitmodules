@@ -6,3 +6,7 @@
 	path = gpt-oss
 	url = https://github.com/openai/gpt-oss.git
 	ignore = untracked
+[submodule "Beyond-the-80-20-Rule-RLVR"]
+	path = Beyond-the-80-20-Rule-RLVR
+	url = https://github.com/Shenzhi-Wang/Beyond-the-80-20-Rule-RLVR.git
+	ignore = untracked
