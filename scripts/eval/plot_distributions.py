@@ -31,11 +31,10 @@ from datetime import datetime
 
 # Import centralized config
 from config import (
-    DATASETS, CDG_PARAMS, MODEL_NAMES, DATASET_NAMES, DYNASOR_PATH
+    DATASETS, CDG_PARAMS, MODEL_NAMES, DATASET_NAMES
 )
 
-# Use dynasor from conda
-sys.path.insert(0, DYNASOR_PATH)
+# dynasor for math evaluation: pip install git+https://github.com/hao-ai-lab/Dynasor.git
 from dynasor.core.evaluator import math_equal
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp_histogram'

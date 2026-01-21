@@ -32,12 +32,10 @@ from datetime import datetime
 
 # Import centralized config
 from config import (
-    DATASETS, RESULT_BASE_PATH, BETA_VALUES, ALPHA_VALUES, POSITION_PCT_VALUES,
-    DYNASOR_PATH
+    DATASETS, RESULT_BASE_PATH, BETA_VALUES, ALPHA_VALUES, POSITION_PCT_VALUES
 )
 
-# Use dynasor from conda
-sys.path.insert(0, DYNASOR_PATH)
+# dynasor for math evaluation: pip install git+https://github.com/hao-ai-lab/Dynasor.git
 from dynasor.core.evaluator import math_equal
 
 # Output directory for results (local - small files only)

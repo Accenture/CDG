@@ -141,7 +141,7 @@ POSITION_PCT_VALUES = [10, 20]
 
 
 # ============================================================================
-# DYNASOR PATH (for math_equal function)
+# DYNASOR PACKAGE (for math_equal function)
 # ============================================================================
-
-DYNASOR_PATH = '/mnt/yuenvs/deepconf/lib/python3.10/site-packages'
+# Install via: pip install git+https://github.com/hao-ai-lab/Dynasor.git
+# Usage: from dynasor.core.evaluator import math_equal
