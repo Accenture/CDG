@@ -32,61 +32,15 @@ import json
 import random
 from datetime import datetime
 
+# Import centralized config
+from config import (
+    DATASETS, CDG_PARAMS, TRACE_COUNTS, NUM_SUBSAMPLES, RANDOM_SEED,
+    METHODS, METHOD_LABELS, DYNASOR_PATH
+)
+
 # Use dynasor from conda
-sys.path.insert(0, '/mnt/yuenvs/deepconf/lib/python3.10/site-packages')
+sys.path.insert(0, DYNASOR_PATH)
 from dynasor.core.evaluator import math_equal
-
-
-# ============================================================================
-# HARDCODED DATA PATHS (Yu's directories)
-# ============================================================================
-
-DATASETS = {
-    'deepseek8b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/aime_2024_run_512_results_deepseek8b',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/aime_2025_run_512_results_newpara',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/bruno_2025_run_512_results_deepseek8b',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/hmmt_feb_2025_run_512_results',
-    },
-    'gptoss20b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_aime_2024_gptoss_topk_40_no_highreason',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/aime_2025_run_512_results_gptoss20b_topk_40_no_highreason',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_bruno_2025_gptoss_topk_40_no_highreason',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_hmmt_2025_gptoss_topk_40_no_highreason',
-    },
-    'gemma3_27b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_aime2024_512',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_aime2025_512',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_bruno2025_512',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_hmmt2025_512',
-    },
-    'qwq32b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_aime2024_512',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_aime2025_512',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_bruno2025_512',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_hmmt2025_512',
-    },
-}
-
-# CDG optimal parameters per model
-CDG_PARAMS = {
-    'deepseek8b': {'alpha': 0.5, 'beta': 10, 'position_pct': 10},
-    'gptoss20b': {'alpha': 0.5, 'beta': 10, 'position_pct': 10},
-    'gemma3_27b': {'alpha': 0.5, 'beta': 3, 'position_pct': 10},
-    'qwq32b': {'alpha': 0.5, 'beta': 3, 'position_pct': 10},
-}
-
-TRACE_COUNTS = [8, 16, 32, 64, 128, 256, 512]
-NUM_SUBSAMPLES = 5  # Number of random subsamples for variance estimation
-RANDOM_SEED = 42
-
-METHODS = ['majority', 'mean_weighted', 'top10_tail', 'cdg']
-METHOD_LABELS = {
-    'majority': 'Majority',
-    'mean_weighted': 'Mean Weighted',
-    'top10_tail': 'Top10 Tail',
-    'cdg': 'CDG',
-}
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp2_baseline_vs_cdg'
 

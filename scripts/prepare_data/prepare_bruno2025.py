@@ -8,8 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-# Add scripts to path for config import (parent folder contains config.py)
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import DatasetConfig
 
 from datasets import load_dataset

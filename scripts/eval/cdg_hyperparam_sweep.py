@@ -30,46 +30,15 @@ import sys
 import json
 from datetime import datetime
 
+# Import centralized config
+from config import (
+    DATASETS, RESULT_BASE_PATH, BETA_VALUES, ALPHA_VALUES, POSITION_PCT_VALUES,
+    DYNASOR_PATH
+)
+
 # Use dynasor from conda
-sys.path.insert(0, '/mnt/yuenvs/deepconf/lib/python3.10/site-packages')
+sys.path.insert(0, DYNASOR_PATH)
 from dynasor.core.evaluator import math_equal
-
-
-# ============================================================================
-# HARDCODED DATA PATHS (Yu's directories - DO NOT MODIFY PICKLE FILES)
-# ============================================================================
-
-DATASETS = {
-    'deepseek8b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/aime_2024_run_512_results_deepseek8b',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/aime_2025_run_512_results_newpara',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/bruno_2025_run_512_results_deepseek8b',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/deepseek/hmmt_feb_2025_run_512_results',
-    },
-    'gptoss20b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_aime_2024_gptoss_topk_40_no_highreason',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/aime_2025_run_512_results_gptoss20b_topk_40_no_highreason',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_bruno_2025_gptoss_topk_40_no_highreason',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_hmmt_2025_gptoss_topk_40_no_highreason',
-    },
-    'gemma3_27b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_aime2024_512',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_aime2025_512',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_bruno2025_512',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforGEMMA/gemma3_27b_hmmt2025_512',
-    },
-    'qwq32b': {
-        'aime2024': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_aime2024_512',
-        'aime2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_aime2025_512',
-        'bruno2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_bruno2025_512',
-        'hmmt2025': '/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper/resultsforqwq/qwq32b_hmmt2025_512',
-    },
-}
-
-# Hyperparameter sweep values
-BETA_VALUES = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30]
-ALPHA_VALUES = [0.5, 1.0]
-POSITION_PCT_VALUES = [10, 20]
 
 # Output directory for results (local - small files only)
 OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp3_cdg_sweep'
@@ -81,8 +50,8 @@ CACHE_FILE = OUTPUT_DIR / 'sweep_cache.json'
 PARTIAL_CACHE_FILE = OUTPUT_DIR / 'partial_cache.json'
 
 # Config file path (compatible with HyperparamConfig for run_all_experiments.sh)
-# This goes to Yu's results directory so other scripts can read it
-CONFIG_OUTPUT_DIR = Path('/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper')
+# This goes to the results directory so other scripts can read it
+CONFIG_OUTPUT_DIR = Path(RESULT_BASE_PATH)
 CONFIG_FILENAME = 'cdg_hyperparams.json'
 
 

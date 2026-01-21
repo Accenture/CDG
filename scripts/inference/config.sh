@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================
-# Centralized configuration for all shell scripts
+# Centralized configuration for inference scripts.
 # Source this file at the beginning of your shell scripts:
-#   source "$(dirname "$0")/../config.sh"
+#   source "$(dirname "$0")/config.sh"
 # ============================================================
 
 # ============================================================
