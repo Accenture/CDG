@@ -277,7 +277,7 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
         ax.set_xlabel('Position (1=start, 10=end)', fontweight='bold')
         if idx == 0:
             ax.set_ylabel('Mean Confidence', fontweight='bold')
-            ax.legend(loc='upper left', framealpha=0.9, edgecolor='gray',
+            ax.legend(loc='lower left', framealpha=0.9, edgecolor='gray',
                       handlelength=1.2, handletextpad=0.4, borderpad=0.3)
         ax.set_xticks([1, 5, 10])
         ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
