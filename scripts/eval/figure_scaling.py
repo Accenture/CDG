@@ -22,18 +22,31 @@ from pathlib import Path
 # Import config for paths
 from config import OUTPUT_DIRS, FIGURES_DIR, TRACE_COUNTS, BETA_VALUES
 
+# Theoretical r values per model (for optimal beta range calculation)
+MODEL_R_VALUES = {
+    'deepseek8b': 7.87,
+    'gptoss20b': 8.70,
+    'gemma3_27b': 6.64,
+    'qwq32b': 4.39,
+}
+
+def get_optimal_beta_range(model: str) -> tuple:
+    """Compute optimal beta range as [r/2, 1.2*r] from theoretical r value."""
+    r = MODEL_R_VALUES[model]
+    return (r / 2, 1.5 * r)
+
 
 def setup_matplotlib():
     """Configure matplotlib for publication-quality figures."""
     import matplotlib.pyplot as plt
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman']
-    plt.rcParams['font.size'] = 11
-    plt.rcParams['axes.labelsize'] = 12
-    plt.rcParams['axes.titlesize'] = 11
-    plt.rcParams['xtick.labelsize'] = 10
-    plt.rcParams['ytick.labelsize'] = 10
-    plt.rcParams['legend.fontsize'] = 10
+    plt.rcParams['font.size'] = 13
+    plt.rcParams['axes.labelsize'] = 14
+    plt.rcParams['axes.titlesize'] = 13
+    plt.rcParams['xtick.labelsize'] = 12
+    plt.rcParams['ytick.labelsize'] = 12
+    plt.rcParams['legend.fontsize'] = 11
     plt.rcParams['lines.linewidth'] = 1.5
     plt.rcParams['lines.markersize'] = 6
     return plt
@@ -97,11 +110,11 @@ def generate_scaling_figure(output_path: Path = None):
     # Create figure with GridSpec for clustering: (a,b,c) and (d)
     fig = plt.figure(figsize=(14, 3.8), dpi=300)
 
-    # Outer grid: [abc cluster] [d panel] - abc 20% wider
-    outer_gs = gridspec.GridSpec(1, 2, width_ratios=[2.9, 1.0], wspace=0.08)
+    # Outer grid: [abc cluster] [d panel] - d ~12% wider to fit legend
+    outer_gs = gridspec.GridSpec(1, 2, width_ratios=[2.78, 1.12], wspace=0.08)
 
     # Inner grid for a, b, c
-    inner_gs = gridspec.GridSpecFromSubplotSpec(1, 3, subplot_spec=outer_gs[0], wspace=0.10)
+    inner_gs = gridspec.GridSpecFromSubplotSpec(1, 3, subplot_spec=outer_gs[0], wspace=0.12)
 
     axes = [
         fig.add_subplot(inner_gs[0]),
@@ -132,7 +145,7 @@ def generate_scaling_figure(output_path: Path = None):
         'cdg': ('CDG', 'CDG (ours)')
     }
 
-    def plot_scaling(ax, model, dataset, title, ylim, show_ylabel=False, show_legend=False):
+    def plot_scaling(ax, model, dataset, ylim, show_ylabel=False, show_legend=False):
         """Plot scaling data for a model-dataset pair."""
         data = get_scaling_data(scaling_cache, model, dataset)
 
@@ -146,7 +159,6 @@ def generate_scaling_figure(output_path: Path = None):
         ax.set_xticks(TRACE_COUNTS)
         ax.set_xticklabels([str(t) for t in TRACE_COUNTS])
         ax.set_ylim(ylim)
-        ax.set_title(title, fontweight='bold')
         ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
         if show_legend:
             ax.legend(loc='upper left', framealpha=0.9, edgecolor='gray',
@@ -155,22 +167,27 @@ def generate_scaling_figure(output_path: Path = None):
             ax.set_ylabel('Accuracy (%)', fontweight='bold')
 
     # Section title for abc cluster (centered over wider abc area)
-    fig.text(0.36, 0.90, 'Trace Scaling', ha='center', fontweight='bold', fontsize=14)
+    fig.text(0.365, 0.92, 'Trace Scaling', ha='center', fontweight='bold', fontsize=16)
 
     # Figure 1: DeepSeek-R1-8B on AIME 2025
     ax1 = axes[0]
-    plot_scaling(ax1, 'deepseek8b', 'aime2025', '(a) DeepSeek-R1-8B on AIME 2025', [78, 95], show_ylabel=True, show_legend=True)
+    plot_scaling(ax1, 'deepseek8b', 'aime2025', [78, 95], show_ylabel=True, show_legend=True)
     ax1.set_xlabel(r'Number of Traces $L$', fontweight='bold')
 
     # Figure 2: Gemma-3-27B on AIME 2024
     ax2 = axes[1]
-    plot_scaling(ax2, 'gemma3_27b', 'aime2024', '(b) Gemma-3-27B on AIME 2024', [38, 62])
+    plot_scaling(ax2, 'gemma3_27b', 'aime2024', [38, 62])
     ax2.set_xlabel(r'Number of Traces $L$', fontweight='bold')
 
     # Figure 3: QWQ-32B on BRUNO 2025
     ax3 = axes[2]
-    plot_scaling(ax3, 'qwq32b', 'bruno2025', '(c) QWQ-32B on BRUNO 2025', [78, 92])
+    plot_scaling(ax3, 'qwq32b', 'bruno2025', [78, 92])
     ax3.set_xlabel(r'Number of Traces $L$', fontweight='bold')
+
+    # Subtitles at bottom (below x-axis labels)
+    fig.text(0.15, 0.01, '(a) DeepSeek-R1-8B on AIME 2025', ha='center', fontweight='bold', fontsize=13)
+    fig.text(0.365, 0.01, '(b) Gemma-3-27B on AIME 2024', ha='center', fontweight='bold', fontsize=13)
+    fig.text(0.58, 0.01, '(c) QWQ-32B on BRUNO 2025', ha='center', fontweight='bold', fontsize=13)
 
     # Figure 4: DeepSeek-8B Beta Ablation
     ax4 = axes[3]
@@ -213,35 +230,60 @@ def generate_scaling_figure(output_path: Path = None):
         'hmmt2025': 'HMMT2025'
     }
 
+    # Add gradient band showing theoretical optimal beta range for deepseek8b
+    # Darkest in center, fading towards edges using non-overlapping slices
+    beta_min, beta_max = get_optimal_beta_range('deepseek8b')
+    beta_center = (beta_min + beta_max) / 2
+    half_width = (beta_max - beta_min) / 2
+
+    # Create gradient with non-overlapping slices
+    n_slices = 50
+    max_alpha = 0.20
+    for i in range(n_slices):
+        # Position from left edge to right edge
+        left = beta_min + (i / n_slices) * (beta_max - beta_min)
+        right = beta_min + ((i + 1) / n_slices) * (beta_max - beta_min)
+        # Distance from center (0 at center, 1 at edges)
+        slice_center = (left + right) / 2
+        dist_from_center = abs(slice_center - beta_center) / half_width
+        # Alpha is highest at center, fades with power 3
+        alpha = max_alpha * (1 - dist_from_center ** 3)
+        ax4.axvspan(left, right, alpha=alpha, color='#2ca02c', linewidth=0)
+
     # Plot each dataset
     for dataset, accuracies in datasets_beta.items():
         ax4.plot(BETA_VALUES, accuracies,
                  color=dataset_colors[dataset], marker='o', linewidth=1.5, markersize=5,
                  label=dataset_labels[dataset])
 
-    # Add vertical line at beta=10 (optimal for DeepSeek)
-    ax4.axvline(x=10, color='gray', linestyle=':', linewidth=1.5, alpha=0.7)
-
     # Section title for d panel (centered over narrower d area)
-    fig.text(0.86, 0.90, r'$\beta$ Search', ha='center', fontweight='bold', fontsize=14)
+    fig.text(0.855, 0.92, r'$\beta$ Search', ha='center', fontweight='bold', fontsize=16)
 
     # Vertical dashed line separating abc cluster from d panel
     from matplotlib.lines import Line2D
-    vline = Line2D([0.73, 0.73], [0.05, 0.92], transform=fig.transFigure,
-                   color='gray', linewidth=1.2, linestyle='--')
+    vline = Line2D([0.7025, 0.7025], [0.05, 0.92], transform=fig.transFigure,
+                   color='gray', linewidth=2, linestyle='--')
     fig.add_artist(vline)
 
     ax4.set_xlabel(r'CDG weight $\beta$', fontweight='bold')
-    ax4.set_title(r'(d) DeepSeek-R1-8B ($\alpha$=0.5)', fontweight='bold')
+
+    # Subtitle at bottom for panel d
+    fig.text(0.855, 0.01, r'(d) DeepSeek-R1-8B ($\alpha$=0.5)', ha='center', fontweight='bold', fontsize=13)
     ax4.set_xticks(BETA_VALUES)
     ax4.set_xticklabels([str(b) for b in BETA_VALUES])
     ax4.set_ylim([60, 100])
     ax4.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax4.legend(loc='lower center', ncol=2, framealpha=0.9, edgecolor='gray',
+    # Add custom patch for optimal range legend
+    from matplotlib.patches import Patch
+    handles, labels = ax4.get_legend_handles_labels()
+    optimal_patch = Patch(facecolor='#2ca02c', alpha=0.20, label='Optimal range')
+    handles.append(optimal_patch)
+    labels.append('Optimal range')
+    ax4.legend(handles, labels, loc='lower center', ncol=3, framealpha=0.9, edgecolor='gray',
               handlelength=1.2, handletextpad=0.3, borderpad=0.3, labelspacing=0.2, columnspacing=0.8)
 
-    # Adjust layout - room for section titles at top
-    plt.subplots_adjust(left=0.045, right=0.99, top=0.82, bottom=0.14)
+    # Adjust layout - room for section titles at top and subtitles at bottom
+    plt.subplots_adjust(left=0.045, right=0.99, top=0.88, bottom=0.20)
 
     # Save figure
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)

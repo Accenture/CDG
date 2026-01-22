@@ -47,12 +47,12 @@ def setup_matplotlib():
     import matplotlib.pyplot as plt
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman']
-    plt.rcParams['font.size'] = 11
-    plt.rcParams['axes.labelsize'] = 12
-    plt.rcParams['axes.titlesize'] = 12
-    plt.rcParams['xtick.labelsize'] = 10
-    plt.rcParams['ytick.labelsize'] = 10
-    plt.rcParams['legend.fontsize'] = 9
+    plt.rcParams['font.size'] = 14
+    plt.rcParams['axes.labelsize'] = 15
+    plt.rcParams['axes.titlesize'] = 14
+    plt.rcParams['xtick.labelsize'] = 13
+    plt.rcParams['ytick.labelsize'] = 13
+    plt.rcParams['legend.fontsize'] = 12
     plt.rcParams['lines.linewidth'] = 1.5
     return plt
 
@@ -85,14 +85,14 @@ def plot_histogram_panel(ax, data_correct, data_wrong, xlabel, ylabel=None,
     if ylabel:
         ax.set_ylabel(ylabel, fontweight='bold')
 
-    ax.legend(loc=legend_loc, framealpha=0.9, edgecolor='gray', fontsize=10,
+    ax.legend(loc=legend_loc, framealpha=0.9, edgecolor='gray', fontsize=12,
               handlelength=1.0, handletextpad=0.3, borderpad=0.3)
     ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
     ax.set_ylim([0, None])
 
     if use_sci_notation:
         ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
-        ax.yaxis.get_offset_text().set_fontsize(9)
+        ax.yaxis.get_offset_text().set_fontsize(12)
 
 
 def plot_gradient_panel(ax, dataset: str):
@@ -135,7 +135,7 @@ def plot_gradient_panel(ax, dataset: str):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height,
                     f'{val:.1f}',
-                    ha='center', va='bottom', fontsize=10, fontweight='bold')
+                    ha='center', va='bottom', fontsize=12, fontweight='bold')
 
     ax.set_xlabel(r'(d) Direction of $\nabla C_{\ell}$ (4 models)', fontweight='bold')
     ax.set_ylabel('Percentage (%)', fontweight='bold')
@@ -143,7 +143,7 @@ def plot_gradient_panel(ax, dataset: str):
     ax.set_xticklabels([r'Correct ($\nabla C_{\ell} > 0$)', r'Wrong ($\nabla C_{\ell} < 0$)'])
     ax.set_ylim([0, 115])
     ax.legend(loc='upper right', ncol=2, framealpha=0.9,
-              edgecolor='gray', fontsize=10, handlelength=1.0, handletextpad=0.3,
+              edgecolor='gray', fontsize=12, handlelength=1.0, handletextpad=0.3,
               borderpad=0.3, labelspacing=0.2, columnspacing=0.8)
     ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5, axis='y')
 
@@ -152,15 +152,15 @@ def plot_gradient_panel(ax, dataset: str):
 # Main Figure Generation
 # =============================================================================
 
-def generate_single_histogram_figure(model: str, dataset: str, output_dir: Path = None) -> Path:
+def generate_single_histogram_figure(model: str, dataset: str, output_path: Path = None) -> Path:
     """Generate a single 1x4 histogram figure for a given model and dataset."""
     plt = setup_matplotlib()
     import matplotlib.gridspec as gridspec
 
-    # Default output directory
-    if output_dir is None:
-        output_dir = FIGURES_DIR / 'histograms'
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Default output path
+    if output_path is None:
+        output_path = FIGURES_DIR / 'histogram_figure.pdf'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load data for this model-dataset pair
     try:
@@ -212,7 +212,6 @@ def generate_single_histogram_figure(model: str, dataset: str, output_dir: Path 
     model_display = MODEL_NAMES.get(model, model)
     dataset_display = DATASET_NAMES.get(dataset, dataset)
 
-    output_path = output_dir / f'histogram_{model}_{dataset}.pdf'
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
 
     png_path = output_path.with_suffix('.png')
@@ -233,6 +232,8 @@ def generate_all_histogram_figures(models: list = None, datasets: list = None, o
         models = MODEL_KEYS
     if datasets is None:
         datasets = DATASET_KEYS
+    if output_dir is None:
+        output_dir = FIGURES_DIR / 'histograms'
 
     print(f"Generating {len(models)} × {len(datasets)} = {len(models) * len(datasets)} figures...")
     print(f"Models: {models}")
@@ -242,7 +243,8 @@ def generate_all_histogram_figures(models: list = None, datasets: list = None, o
     generated = []
     for model in models:
         for dataset in datasets:
-            result = generate_single_histogram_figure(model, dataset, output_dir)
+            output_path = output_dir / f'histogram_{model}_{dataset}.pdf'
+            result = generate_single_histogram_figure(model, dataset, output_path)
             if result:
                 generated.append(result)
             print()
@@ -257,18 +259,22 @@ def generate_all_histogram_figures(models: list = None, datasets: list = None, o
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate histogram figures for paper')
-    parser.add_argument('--model', '-m', type=str, default=None,
+    parser.add_argument('--model', '-m', type=str, default='deepseek8b',
                         choices=MODEL_KEYS,
-                        help='Specific model (default: all models)')
-    parser.add_argument('--dataset', '-d', type=str, default=None,
+                        help='Specific model (default: deepseek8b)')
+    parser.add_argument('--dataset', '-d', type=str, default='aime2024',
                         choices=DATASET_KEYS,
-                        help='Specific dataset (default: all datasets)')
-    parser.add_argument('--output-dir', '-o', type=str, default=None,
-                        help='Output directory (default: results/figures/histograms)')
+                        help='Specific dataset (default: aime2024)')
+    parser.add_argument('--output', '-o', type=str, default=None,
+                        help='Output path (default: results/figures/histogram_figure.pdf)')
+    parser.add_argument('--all', '-a', action='store_true',
+                        help='Generate all model × dataset combinations')
     args = parser.parse_args()
 
-    models = [args.model] if args.model else None
-    datasets = [args.dataset] if args.dataset else None
-    output_dir = Path(args.output_dir) if args.output_dir else None
-
-    generate_all_histogram_figures(models, datasets, output_dir)
+    if args.all:
+        # Generate all combinations to histograms subdirectory
+        generate_all_histogram_figures()
+    else:
+        # Default: single figure (deepseek8b × aime2024) to figures directory
+        output_path = Path(args.output) if args.output else FIGURES_DIR / 'histogram_figure.pdf'
+        generate_single_histogram_figure(args.model, args.dataset, output_path)
