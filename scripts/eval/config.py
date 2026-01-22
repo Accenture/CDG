@@ -141,6 +141,27 @@ POSITION_PCT_VALUES = [10, 20]
 
 
 # ============================================================================
+# OUTPUT DIRECTORIES (relative to repo root)
+# ============================================================================
+
+# Repo root directory (sampling_credit/)
+REPO_ROOT = Path(__file__).parent.parent.parent
+
+# Results directory for cached eval outputs
+RESULTS_DIR = REPO_ROOT / 'results'
+
+# Output directories for each experiment
+OUTPUT_DIRS = {
+    'compare_voting_methods': RESULTS_DIR / 'exp2_baseline_vs_cdg',
+    'cdg_hyperparam_sweep': RESULTS_DIR / 'exp3_cdg_sweep',
+    'plot_distributions': RESULTS_DIR / 'exp_histogram',
+}
+
+# Figures output directory
+FIGURES_DIR = RESULTS_DIR / 'figures'
+
+
+# ============================================================================
 # DYNASOR PACKAGE (for math_equal function)
 # ============================================================================
 # Install via: pip install git+https://github.com/hao-ai-lab/Dynasor.git
