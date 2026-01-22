@@ -9,16 +9,18 @@ Usage:
     python figure_confidence_curve.py                    # Generate figure (AIME 2025)
     python figure_confidence_curve.py --dataset aime2024 # Different dataset
     python figure_confidence_curve.py --output fig.pdf   # Custom output path
+    python figure_confidence_curve.py --no-cache         # Force recompute (skip cache)
 """
 
 import argparse
 import pickle
+import json
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 
 # Import config for paths
-from config import DATASETS, FIGURES_DIR, MODEL_NAMES, DATASET_NAMES
+from config import DATASETS, FIGURES_DIR, MODEL_NAMES, DATASET_NAMES, OUTPUT_DIRS
 
 # dynasor for math evaluation
 from dynasor.core.evaluator import math_equal
@@ -40,6 +42,36 @@ MODEL_DISPLAY = {
 NUM_BINS = 10
 COLOR_CORRECT = '#2ca02c'  # Green
 COLOR_WRONG = '#d62728'    # Red
+
+# Cache directory
+CACHE_DIR = OUTPUT_DIRS.get('plot_distributions', FIGURES_DIR.parent / 'exp_histogram') / 'confidence_curve_cache'
+
+
+# =============================================================================
+# Cache Functions
+# =============================================================================
+
+def get_cache_path(model: str, dataset: str) -> Path:
+    """Get cache file path for a model-dataset pair."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f'{model}_{dataset}_confidence_curve.json'
+
+
+def load_cache(model: str, dataset: str) -> dict:
+    """Load cached stats if available."""
+    cache_path = get_cache_path(model, dataset)
+    if cache_path.exists():
+        with open(cache_path, 'r') as f:
+            return json.load(f)
+    return None
+
+
+def save_cache(model: str, dataset: str, stats: dict):
+    """Save stats to cache."""
+    cache_path = get_cache_path(model, dataset)
+    with open(cache_path, 'w') as f:
+        json.dump(stats, f, indent=2)
+    print(f"  Cached to: {cache_path}")
 
 
 # =============================================================================
@@ -189,7 +221,7 @@ def analyze_confidence_by_position(questions: list, num_bins: int = 10) -> dict:
 # Figure Generation
 # =============================================================================
 
-def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Path = None):
+def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Path = None, use_cache: bool = True):
     """Generate 1x4 confidence curve figure for all models on a dataset."""
     plt = setup_matplotlib()
 
@@ -206,18 +238,29 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
     for idx, model in enumerate(MODEL_ORDER):
         ax = axes[idx]
 
-        # Load data for this model-dataset pair
-        dataset_path = DATASETS.get(model, {}).get(dataset)
-        if not dataset_path:
-            print(f"Warning: No path for {model}/{dataset}")
-            continue
+        # Try to load from cache first
+        stats = None
+        if use_cache:
+            stats = load_cache(model, dataset)
+            if stats:
+                print(f"Loaded {model} / {dataset} from cache")
 
-        print(f"Loading {model} / {dataset}...")
-        questions = load_all_questions(dataset_path)
-        print(f"  Loaded {len(questions)} questions")
+        # If no cache, compute from scratch
+        if stats is None:
+            dataset_path = DATASETS.get(model, {}).get(dataset)
+            if not dataset_path:
+                print(f"Warning: No path for {model}/{dataset}")
+                continue
 
-        # Analyze confidence by position
-        stats = analyze_confidence_by_position(questions, NUM_BINS)
+            print(f"Loading {model} / {dataset}...")
+            questions = load_all_questions(dataset_path)
+            print(f"  Loaded {len(questions)} questions")
+
+            # Analyze confidence by position
+            stats = analyze_confidence_by_position(questions, NUM_BINS)
+
+            # Save to cache
+            save_cache(model, dataset, stats)
 
         # Plot correct traces
         ax.errorbar(positions, stats['correct']['means'], yerr=stats['correct']['stds'],
@@ -264,7 +307,9 @@ if __name__ == '__main__':
                         help='Dataset to analyze (default: aime2025)')
     parser.add_argument('--output', '-o', type=str, default=None,
                         help='Output path (default: results/figures/confidence_curve_figure.pdf)')
+    parser.add_argument('--no-cache', action='store_true',
+                        help='Force recompute, skip cache')
     args = parser.parse_args()
 
     output_path = Path(args.output) if args.output else None
-    generate_confidence_curve_figure(args.dataset, output_path)
+    generate_confidence_curve_figure(args.dataset, output_path, use_cache=not args.no_cache)
