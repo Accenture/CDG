@@ -160,6 +160,9 @@ OUTPUT_DIRS = {
 # Figures output directory
 FIGURES_DIR = RESULTS_DIR / 'figures'
 
+# Appendix figures output directory
+APPENDIX_DIR = FIGURES_DIR / 'appendix'
+
 
 # ============================================================================
 # DYNASOR PACKAGE (for math_equal function)

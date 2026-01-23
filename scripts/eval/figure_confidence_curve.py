@@ -23,15 +23,15 @@ from collections import defaultdict
 from config import DATASETS, FIGURES_DIR, MODEL_NAMES, DATASET_NAMES, OUTPUT_DIRS
 
 # dynasor for math evaluation
-from dynasor.core.evaluator import math_equal
+# from dynasor.core.evaluator import math_equal
 
 
 # =============================================================================
 # Constants
 # =============================================================================
 
-# Model order for figure: deepseek, gemma, gpt, qwq
-MODEL_ORDER = ['deepseek8b', 'gemma3_27b', 'gptoss20b', 'qwq32b']
+# Model order for figure: deepseek, gemma, qwq, gpt
+MODEL_ORDER = ['deepseek8b', 'gemma3_27b', 'qwq32b', 'gptoss20b']
 MODEL_DISPLAY = {
     'deepseek8b': 'DeepSeek-R1-8B',
     'gemma3_27b': 'GEMMA-3-27B',
@@ -230,8 +230,8 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
         FIGURES_DIR.mkdir(parents=True, exist_ok=True)
         output_path = FIGURES_DIR / 'confidence_curve_figure.pdf'
 
-    # Create 1x4 figure (height reduced 15%)
-    fig, axes = plt.subplots(1, 4, figsize=(14, 3.0), dpi=300)
+    # Create 1x4 figure
+    fig, axes = plt.subplots(1, 4, figsize=(12.92, 2.78), dpi=300)
 
     positions = list(range(1, NUM_BINS + 1))
 
@@ -280,9 +280,10 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
             ax.legend(loc='lower left', framealpha=0.9, edgecolor='gray',
                       handlelength=1.2, handletextpad=0.4, borderpad=0.3)
         ax.set_xticks([1, 5, 10])
+        ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
         ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
 
-    plt.tight_layout()
+    plt.subplots_adjust(left=0.05, right=0.99, top=0.88, bottom=0.22, wspace=0.11)
 
     # Save figure
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
