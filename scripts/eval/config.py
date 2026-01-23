@@ -24,7 +24,7 @@ RESULT_BASE_PATH = "/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_cr
 # ============================================================================
 # DATASET PATHS (relative to RESULT_BASE_PATH)
 # ============================================================================
-# Each model has results for 4 benchmarks: aime2024, aime2025, bruno2025, hmmt2025
+# Each model has results for 4 benchmarks: aime2024, aime2025, brumo2025, hmmt2025
 # Directory structure: RESULT_BASE_PATH / <model_subdir> / <dataset_subdir>
 
 DATASET_PATHS = {
@@ -32,28 +32,28 @@ DATASET_PATHS = {
         # DeepSeek R1 8B results
         'aime2024': 'deepseek/aime_2024_run_512_results_deepseek8b',
         'aime2025': 'deepseek/aime_2025_run_512_results_newpara',
-        'bruno2025': 'deepseek/bruno_2025_run_512_results_deepseek8b',
+        'brumo2025': 'deepseek/bruno_2025_run_512_results_deepseek8b',
         'hmmt2025': 'deepseek/hmmt_feb_2025_run_512_results',
     },
     'gptoss20b': {
         # GPT-OSS 20B results (no high reasoning, topk=40)
         'aime2024': 'gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_aime_2024_gptoss_topk_40_no_highreason',
         'aime2025': 'gptoss_NO_high_reason_topk_40/aime_2025_run_512_results_gptoss20b_topk_40_no_highreason',
-        'bruno2025': 'gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_bruno_2025_gptoss_topk_40_no_highreason',
+        'brumo2025': 'gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_bruno_2025_gptoss_topk_40_no_highreason',
         'hmmt2025': 'gptoss_NO_high_reason_topk_40/results_gpt_oss_topk_40_no_highreason_paper/result_hmmt_2025_gptoss_topk_40_no_highreason',
     },
     'gemma3_27b': {
         # Gemma 3 27B results
         'aime2024': 'resultsforGEMMA/gemma3_27b_aime2024_512',
         'aime2025': 'resultsforGEMMA/gemma3_27b_aime2025_512',
-        'bruno2025': 'resultsforGEMMA/gemma3_27b_bruno2025_512',
+        'brumo2025': 'resultsforGEMMA/gemma3_27b_bruno2025_512',
         'hmmt2025': 'resultsforGEMMA/gemma3_27b_hmmt2025_512',
     },
     'qwq32b': {
         # QwQ 32B results
         'aime2024': 'resultsforqwq/qwq32b_aime2024_512',
         'aime2025': 'resultsforqwq/qwq32b_aime2025_512',
-        'bruno2025': 'resultsforqwq/qwq32b_bruno2025_512',
+        'brumo2025': 'resultsforqwq/qwq32b_bruno2025_512',
         'hmmt2025': 'resultsforqwq/qwq32b_hmmt2025_512',
     },
 }
@@ -117,7 +117,7 @@ METHOD_LABELS = {
 # Display names for models
 MODEL_NAMES = {
     'deepseek8b': 'DeepSeek R1 8B',
-    'gptoss20b': 'GPT-OSS 20B',
+    'gptoss20b': 'gpt-oss 20B',
     'gemma3_27b': 'Gemma 3 27B',
     'qwq32b': 'QwQ 32B',
 }
@@ -126,7 +126,7 @@ MODEL_NAMES = {
 DATASET_NAMES = {
     'aime2024': 'AIME 2024',
     'aime2025': 'AIME 2025',
-    'bruno2025': 'Bruno 2025',
+    'brumo2025': 'BRUMO 2025',
     'hmmt2025': 'HMMT 2025',
 }
 

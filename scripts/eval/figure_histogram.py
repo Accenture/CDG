@@ -30,8 +30,8 @@ from config import OUTPUT_DIRS, FIGURES_DIR, MODEL_NAMES, DATASET_NAMES
 # =============================================================================
 
 MODEL_KEYS = ['deepseek8b', 'gptoss20b', 'gemma3_27b', 'qwq32b']
-MODEL_DISPLAY = ['DeepSeek-8B', 'GPT-OSS-20B', 'Gemma-27B', 'QWQ-32B']
-DATASET_KEYS = ['aime2024', 'aime2025', 'bruno2025', 'hmmt2025']
+MODEL_DISPLAY = ['DeepSeek-8B', 'gpt-oss-20B', 'Gemma-27B', 'QWQ-32B']
+DATASET_KEYS = ['aime2024', 'aime2025', 'brumo2025', 'hmmt2025']
 
 COLOR_CORRECT = '#2ca02c'  # Green
 COLOR_WRONG = '#d62728'    # Red

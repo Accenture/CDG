@@ -14,7 +14,7 @@ This guide explains how to run HMMT inference and analyze results using DeepConf
 
 ---
 
-## Data Preparation (Please run these 4 datasets and inference in priority order : aime2025 -> hmmt2025 -> aime2024 -> bruno2025 )
+## Data Preparation (Please run these 4 datasets and inference in priority order : aime2025 -> hmmt2025 -> aime2024 -> brumo2025 )
 
 ### Overview
 
@@ -34,7 +34,7 @@ Each line in the JSONL file should be a JSON object with two fields:
 
 ### Example: Using prepare_aime2025.py
 
-**Script location**: `/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/scripts/prepare_aime2025.py`
+**Script location**: `/path/to/sampling_credit/scripts/prepare_aime2025.py`
 
 #### Step 1: Review the Script
 
@@ -66,7 +66,7 @@ def main():
 #### Step 2: Run the Data Preparation Script
 
 ```bash
-cd /home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit
+cd /path/to/sampling_credit
 
 # Run the preparation script
 python scripts/prepare_aime2025.py
@@ -193,7 +193,7 @@ screen -r hmmt_inference
 ### Step 2: Navigate to Project Directory
 
 ```bash
-cd /home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit
+cd /path/to/sampling_credit
 ```
 
 ### Step 3: Run the Inference using scripts/run_offline_batch_3_q.py via run_hmmt_3q.sh
@@ -428,7 +428,7 @@ QID   Ground Truth         top10_tail_fi    bottom_window    majority_vote
 screen -S hmmt_inference
 
 # 2. Run inference (takes several hours)
-cd /home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit
+cd /path/to/sampling_credit
 ./scripts/run_hmmt_3q.sh
 
 # 3. Detach from screen (Ctrl+A, then D)
@@ -456,8 +456,8 @@ cd /home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit
 
 ### Key Files
 
-- **Inference script**: `/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/scripts/run_hmmt_3q.sh`
-- **Analysis script**: `/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/scripts/analyze_hmmt_results_deepconfs.py`
+- **Inference script**: `/path/to/sampling_credit/scripts/run_hmmt_3q.sh`
+- **Analysis script**: `/path/to/sampling_credit/scripts/analyze_hmmt_results_deepconfs.py`
 - **Results directory**: `/eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b/`
 
 ---

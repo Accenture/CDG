@@ -36,7 +36,7 @@ class PathConfig:
     DATASETS_BASE = os.environ.get("DATASETS_BASE", "/eph/nvme0/datasets")
 
     # Base directory for inference results output
-    OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute2/code/Users/minghao.a.liu/sampling_credit_results")
+    OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/path/to/sampling_credit_results")
     # OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/eph/nvme0/sampling_credit_results/sampling_credit_results")
 
 
@@ -58,7 +58,7 @@ class PathConfig:
     AIME_2025_DIR = os.path.join(DATASETS_BASE, "aime_2025")
     AIME_2024_DIR = os.path.join(DATASETS_BASE, "aime_2024")
     HMMT_2025_DIR = os.path.join(DATASETS_BASE, "hmmt_feb_2025")
-    BRUNO_2025_DIR = os.path.join(DATASETS_BASE, "bruno_2025")
+    BRUMO_2025_DIR = os.path.join(DATASETS_BASE, "brumo_2025")
 
     # ============================================================
     # CONVENIENCE METHODS
@@ -80,7 +80,7 @@ class PathConfig:
             cls.AIME_2025_DIR,
             cls.AIME_2024_DIR,
             cls.HMMT_2025_DIR,
-            cls.BRUNO_2025_DIR,
+            cls.BRUMO_2025_DIR,
         ]
         for d in dirs:
             os.makedirs(d, exist_ok=True)
@@ -112,9 +112,9 @@ class DatasetConfig:
             "hf_id": "MathArena/hmmt_feb_2025",
             "split": "train",
         },
-        "bruno_2025": {
-            "dir": PathConfig.BRUNO_2025_DIR,
-            "filename": "bruno_2025.jsonl",
+        "brumo_2025": {
+            "dir": PathConfig.BRUMO_2025_DIR,
+            "filename": "brumo_2025.jsonl",
             "hf_id": "MathArena/brumo_2025",
             "split": "train",
         },

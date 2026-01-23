@@ -19,7 +19,7 @@ Unified inference runner for all models and datasets.
 ./scripts/inference/run.sh --model qwen32b --dataset all
 
 # GPT-OSS models
-./scripts/inference/run.sh --model gpt-oss-120b --dataset bruno2025
+./scripts/inference/run.sh --model gpt-oss-120b --dataset brumo2025
 ```
 
 ## Available Models
@@ -42,7 +42,7 @@ Unified inference runner for all models and datasets.
 | `aime2025` | DATASET_AIME_2025 |
 | `aime2024` | DATASET_AIME_2024 |
 | `hmmt2025` | DATASET_HMMT_2025 |
-| `bruno2025` | DATASET_BRUNO_2025 |
+| `brumo2025` | DATASET_BRUMO_2025 |
 | `all` | Runs all 4 datasets |
 
 ## Configuration

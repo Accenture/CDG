@@ -35,8 +35,8 @@ echo "[3/4] Preparing AIME 2024..."
 python scripts/prepare_data/prepare_aime2024.py
 echo ""
 
-echo "[4/4] Preparing Bruno 2025..."
-python scripts/prepare_data/prepare_bruno2025.py
+echo "[4/4] Preparing BRUMO 2025..."
+python scripts/prepare_data/prepare_brumo2025.py
 echo ""
 
 echo "========================================================"
@@ -46,5 +46,5 @@ echo "Datasets saved to:"
 echo "  ${DATASET_AIME_2025}"
 echo "  ${DATASET_HMMT_2025}"
 echo "  ${DATASET_AIME_2024}"
-echo "  ${DATASET_BRUNO_2025}"
+echo "  ${DATASET_BRUMO_2025}"
 echo "========================================================"

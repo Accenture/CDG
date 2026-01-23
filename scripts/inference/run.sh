@@ -9,14 +9,14 @@
 # Examples:
 #   ./scripts/inference/run.sh --model deepseek8b --dataset aime2025
 #   ./scripts/inference/run.sh --model qwen32b --dataset all
-#   ./scripts/inference/run.sh --model gpt-oss-20b --dataset bruno2025
+#   ./scripts/inference/run.sh --model gpt-oss-20b --dataset brumo2025
 #
 # Available models:
 #   deepseek8b, deepseek-r1-llama-70b, qwen32b, qwen25-32b,
 #   qwq32b, gemma3-27b, gpt-oss-20b, gpt-oss-120b
 #
 # Available datasets:
-#   aime2025, aime2024, hmmt2025, bruno2025, all
+#   aime2025, aime2024, hmmt2025, brumo2025, all
 #
 # ============================================================
 
@@ -186,13 +186,13 @@ get_dataset_config() {
             DATASET_PATH="${DATASET_HMMT_2025}"
             DATASET_SUFFIX="hmmt2025"
             ;;
-        bruno2025)
-            DATASET_PATH="${DATASET_BRUNO_2025}"
-            DATASET_SUFFIX="bruno2025"
+        brumo2025)
+            DATASET_PATH="${DATASET_BRUMO_2025}"
+            DATASET_SUFFIX="brumo2025"
             ;;
         *)
             echo "Error: Unknown dataset '$dataset'"
-            echo "Available datasets: aime2025, aime2024, hmmt2025, bruno2025, all"
+            echo "Available datasets: aime2025, aime2024, hmmt2025, brumo2025, all"
             exit 1
             ;;
     esac
@@ -260,7 +260,7 @@ if [[ "$DATASET" == "all" ]]; then
     echo ""
 
     run_single "aime2025"
-    run_single "bruno2025"
+    run_single "brumo2025"
     run_single "hmmt2025"
     run_single "aime2024"
 

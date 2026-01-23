@@ -1,7 +1,7 @@
 """
-Prepare Bruno 2025 dataset in JSONL format for deepconf experiments.
+Prepare BRUMO 2025 dataset in JSONL format for deepconf experiments.
 
-Bruno 2025 is a mathematics competition dataset from MathArena.
+BRUMO 2025 is a mathematics competition dataset from MathArena.
 """
 import json
 import os
@@ -15,10 +15,10 @@ from datasets import load_dataset
 
 def main():
     # Get dataset config
-    ds_config = DatasetConfig.DATASETS["bruno_2025"]
+    ds_config = DatasetConfig.DATASETS["brumo_2025"]
 
     # Load dataset
-    print("Loading Bruno 2025 dataset...")
+    print("Loading BRUMO 2025 dataset...")
     dataset = load_dataset(ds_config["hf_id"], split=ds_config["split"])
 
     print(f"Loaded {len(dataset)} problems")

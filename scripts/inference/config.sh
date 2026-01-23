@@ -13,7 +13,7 @@
 export DATASETS_BASE="/eph/nvme0/datasets"
 
 # Base directory for inference results output
-export OUTPUT_BASE="/mnt/batch/tasks/shared/LS_root/mounts/clusters/butters-compute2/code/Users/minghao.a.liu/sampling_credit_results"
+export OUTPUT_BASE="/path/to/sampling_credit_results"
 # export OUTPUT_BASE="/eph/nvme0/sampling_credit_results/sampling_credit_results"
 
 
@@ -32,7 +32,7 @@ export TRANSFORMERS_CACHE="${HF_HOME}"
 export DATASET_AIME_2025="${DATASETS_BASE}/aime_2025/aime_2025.jsonl"
 export DATASET_AIME_2024="${DATASETS_BASE}/aime_2024/aime_2024.jsonl"
 export DATASET_HMMT_2025="${DATASETS_BASE}/hmmt_feb_2025/hmmt_feb_2025.jsonl"
-export DATASET_BRUNO_2025="${DATASETS_BASE}/bruno_2025/bruno_2025.jsonl"
+export DATASET_BRUMO_2025="${DATASETS_BASE}/brumo_2025/brumo_2025.jsonl"
 
 # ============================================================
 # MODEL CONFIGURATIONS (per DeepConf paper Table 11)

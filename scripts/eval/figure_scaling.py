@@ -4,7 +4,7 @@ Generate 1x4 figure showing scaling trends and beta ablation.
 
 Figure (a): DeepSeek-R1-8B on AIME 2025 (trace scaling)
 Figure (b): Gemma-3-27B on AIME 2024 (trace scaling)
-Figure (c): QWQ-32B on BRUNO 2025 (trace scaling)
+Figure (c): QWQ-32B on BRUMO 2025 (trace scaling)
 Figure (d): DeepSeek-8B beta ablation (alpha=0.5)
 
 This figure is designed for a cross-column ICML paper (wide, rectangular format).
@@ -179,15 +179,15 @@ def generate_scaling_figure(output_path: Path = None):
     plot_scaling(ax2, 'gemma3_27b', 'aime2024', [38, 62])
     ax2.set_xlabel(r'Number of Traces $L$', fontweight='bold')
 
-    # Figure 3: QWQ-32B on BRUNO 2025
+    # Figure 3: QWQ-32B on BRUMO 2025
     ax3 = axes[2]
-    plot_scaling(ax3, 'qwq32b', 'bruno2025', [78, 92])
+    plot_scaling(ax3, 'qwq32b', 'brumo2025', [78, 92])
     ax3.set_xlabel(r'Number of Traces $L$', fontweight='bold')
 
     # Subtitles at bottom (below x-axis labels)
     fig.text(0.15, 0.01, '(a) DeepSeek-R1-8B on AIME 2025', ha='center', fontweight='bold', fontsize=13)
     fig.text(0.365, 0.01, '(b) Gemma-3-27B on AIME 2024', ha='center', fontweight='bold', fontsize=13)
-    fig.text(0.58, 0.01, '(c) QWQ-32B on BRUNO 2025', ha='center', fontweight='bold', fontsize=13)
+    fig.text(0.58, 0.01, '(c) QWQ-32B on BRUMO 2025', ha='center', fontweight='bold', fontsize=13)
 
     # Figure 4: DeepSeek-8B Beta Ablation
     ax4 = axes[3]
@@ -203,7 +203,7 @@ def generate_scaling_figure(output_path: Path = None):
     datasets_beta = {
         'aime2024': [],
         'aime2025': [],
-        'bruno2025': [],
+        'brumo2025': [],
         'hmmt2025': []
     }
 
@@ -219,14 +219,14 @@ def generate_scaling_figure(output_path: Path = None):
     dataset_colors = {
         'aime2024': '#9467bd',    # Purple
         'aime2025': '#e377c2',    # Pink
-        'bruno2025': '#17becf',   # Cyan
+        'brumo2025': '#17becf',   # Cyan
         'hmmt2025': '#bcbd22'     # Yellow-green
     }
 
     dataset_labels = {
         'aime2024': 'AIME2024',
         'aime2025': 'AIME2025',
-        'bruno2025': 'BRUNO2025',
+        'brumo2025': 'BRUMO2025',
         'hmmt2025': 'HMMT2025'
     }
 

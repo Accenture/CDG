@@ -22,19 +22,19 @@ from config import OUTPUT_DIRS, APPENDIX_DIR, TRACE_COUNTS, BETA_VALUES
 # ============================================================================
 
 MODEL_ORDER = ['deepseek8b', 'gemma3_27b', 'qwq32b', 'gptoss20b']
-DATASET_ORDER = ['aime2024', 'aime2025', 'bruno2025', 'hmmt2025']
+DATASET_ORDER = ['aime2024', 'aime2025', 'brumo2025', 'hmmt2025']
 
 MODEL_DISPLAY = {
     'deepseek8b': 'DeepSeek-R1-8B',
     'gemma3_27b': 'Gemma-3-27B',
-    'gptoss20b': 'GPT-OSS-20B',
+    'gptoss20b': 'gpt-oss-20B',
     'qwq32b': 'QWQ-32B',
 }
 
 DATASET_DISPLAY = {
     'aime2024': 'AIME 2024',
     'aime2025': 'AIME 2025',
-    'bruno2025': 'BRUNO 2025',
+    'brumo2025': 'BRUMO 2025',
     'hmmt2025': 'HMMT 2025',
 }
 
@@ -64,7 +64,7 @@ METHOD_MAP = {
 DATASET_COLORS = {
     'aime2024': '#9467bd',
     'aime2025': '#e377c2',
-    'bruno2025': '#17becf',
+    'brumo2025': '#17becf',
     'hmmt2025': '#bcbd22',
 }
 

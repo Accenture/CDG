@@ -36,7 +36,7 @@ MODEL_DISPLAY = {
     'deepseek8b': 'DeepSeek-R1-8B',
     'gemma3_27b': 'GEMMA-3-27B',
     'qwq32b': 'QWQ-32B',
-    'gptoss20b': 'GPT-OSS-20B',
+    'gptoss20b': 'gpt-oss-20B',
 }
 
 NUM_BINS = 10
@@ -304,7 +304,7 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate confidence curve figure for paper')
     parser.add_argument('--dataset', '-d', type=str, default='aime2025',
-                        choices=['aime2024', 'aime2025', 'bruno2025', 'hmmt2025'],
+                        choices=['aime2024', 'aime2025', 'brumo2025', 'hmmt2025'],
                         help='Dataset to analyze (default: aime2025)')
     parser.add_argument('--output', '-o', type=str, default=None,
                         help='Output path (default: results/figures/confidence_curve_figure.pdf)')

@@ -47,9 +47,9 @@ class DatasetConfig:
             "hf_id": "MathArena/hmmt_feb_2025",
             "split": "train",
         },
-        "bruno_2025": {
-            "dir": os.path.join(DATASETS_BASE, "bruno_2025"),
-            "filename": "bruno_2025.jsonl",
+        "brumo_2025": {
+            "dir": os.path.join(DATASETS_BASE, "brumo_2025"),
+            "filename": "brumo_2025.jsonl",
             "hf_id": "MathArena/brumo_2025",
             "split": "train",
         },
