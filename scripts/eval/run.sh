@@ -61,25 +61,25 @@ fi
 
 run_voting_cache() {
     echo "========================================"
-    echo "Running: compare_voting_methods.py"
+    echo "Running: exp_voting_methods.py"
     echo "========================================"
-    python scripts/eval/compare_voting_methods.py
+    python scripts/eval/exp_voting_methods.py
     echo ""
 }
 
 run_histogram_cache() {
     echo "========================================"
-    echo "Running: plot_distributions.py (histogram cache)"
+    echo "Running: util_histogram_cache.py"
     echo "========================================"
-    python scripts/eval/plot_distributions.py
+    python scripts/eval/util_histogram_cache.py
     echo ""
 }
 
 run_sweep() {
     echo "========================================"
-    echo "Running: cdg_hyperparam_sweep.py"
+    echo "Running: exp_cdg_sweep.py"
     echo "========================================"
-    python scripts/eval/cdg_hyperparam_sweep.py
+    python scripts/eval/exp_cdg_sweep.py
     echo ""
 }
 
@@ -209,9 +209,9 @@ case $TASK in
         echo "========================================================"
         echo ""
         echo "Output directories:"
-        echo "  results/exp2_baseline_vs_cdg/   (voting cache)"
-        echo "  results/exp3_cdg_sweep/         (sweep cache)"
-        echo "  results/exp_histogram/cache/    (histogram cache)"
+        echo "  results/cache/voting_methods/   (voting cache)"
+        echo "  results/cache/cdg_sweep/        (sweep cache)"
+        echo "  results/cache/histogram/        (histogram cache)"
         echo "  results/figures/                (main figures)"
         echo "  results/figures/appendix/       (appendix figures)"
         ;;

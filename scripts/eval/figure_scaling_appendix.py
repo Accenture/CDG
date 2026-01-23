@@ -103,18 +103,18 @@ def setup_matplotlib():
 
 def load_scaling_cache() -> dict:
     """Load cached scaling results."""
-    cache_file = OUTPUT_DIRS['compare_voting_methods'] / 'cache.json'
+    cache_file = OUTPUT_DIRS['exp_voting_methods'] / 'cache.json'
     if not cache_file.exists():
-        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun compare_voting_methods.py first.")
+        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun exp_voting_methods.py first.")
     with open(cache_file, 'r') as f:
         return json.load(f)
 
 
 def load_sweep_cache() -> dict:
     """Load cached hyperparameter sweep results."""
-    cache_file = OUTPUT_DIRS['cdg_hyperparam_sweep'] / 'sweep_cache.json'
+    cache_file = OUTPUT_DIRS['exp_cdg_sweep'] / 'sweep_cache.json'
     if not cache_file.exists():
-        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun cdg_hyperparam_sweep.py first.")
+        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun exp_cdg_sweep.py first.")
     with open(cache_file, 'r') as f:
         return json.load(f)
 
@@ -298,10 +298,10 @@ def generate_scaling_appendix_full(output_path: Path = None):
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
     print(f"Figure saved to: {output_path}")
 
-    # Save PNG
-    png_path = output_path.with_suffix('.png')
-    plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
-    print(f"PNG preview saved to: {png_path}")
+    # # Save PNG
+    # png_path = output_path.with_suffix('.png')
+    # plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
+    # print(f"PNG preview saved to: {png_path}")
 
     plt.close(fig)
     return output_path
@@ -341,10 +341,10 @@ def generate_beta_appendix_full(output_path: Path = None):
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
     print(f"Figure saved to: {output_path}")
 
-    # Save PNG
-    png_path = output_path.with_suffix('.png')
-    plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
-    print(f"PNG preview saved to: {png_path}")
+    # # Save PNG
+    # png_path = output_path.with_suffix('.png')
+    # plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
+    # print(f"PNG preview saved to: {png_path}")
 
     plt.close(fig)
     return output_path

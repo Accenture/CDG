@@ -21,7 +21,7 @@ from collections import defaultdict
 from config import DATASETS, APPENDIX_DIR, OUTPUT_DIRS, CDG_PARAMS
 
 # Import shared functions from existing scripts
-from cdg_hyperparam_sweep import quick_parse, equal_func
+from exp_cdg_sweep import quick_parse, equal_func
 
 
 # ============================================================================
@@ -58,7 +58,7 @@ DATASET_COLORS = {
 }
 
 # Cache file
-CACHE_DIR = OUTPUT_DIRS.get('cdg_hyperparam_sweep', Path(__file__).parent.parent.parent / 'results' / 'exp3_cdg_sweep')
+CACHE_DIR = OUTPUT_DIRS.get('exp_cdg_sweep', Path(__file__).parent.parent.parent / 'results' / 'cache' / 'cdg_sweep')
 CACHE_FILE = CACHE_DIR / 'position_sweep_cache.json'
 
 
@@ -323,10 +323,10 @@ def generate_position_appendix_figure(cache_data: dict, output_path: Path = None
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
     print(f"Figure saved to: {output_path}")
 
-    # Save PNG
-    png_path = output_path.with_suffix('.png')
-    plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
-    print(f"PNG preview saved to: {png_path}")
+    # # Save PNG
+    # png_path = output_path.with_suffix('.png')
+    # plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
+    # print(f"PNG preview saved to: {png_path}")
 
     plt.close(fig)
     return output_path

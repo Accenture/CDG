@@ -150,11 +150,13 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # Results directory for cached eval outputs
 RESULTS_DIR = REPO_ROOT / 'results'
 
-# Output directories for each experiment
+# Cache directories for each experiment
+CACHE_DIR = RESULTS_DIR / 'cache'
+
 OUTPUT_DIRS = {
-    'compare_voting_methods': RESULTS_DIR / 'exp2_baseline_vs_cdg',
-    'cdg_hyperparam_sweep': RESULTS_DIR / 'exp3_cdg_sweep',
-    'plot_distributions': RESULTS_DIR / 'exp_histogram',
+    'exp_voting_methods': CACHE_DIR / 'voting_methods',
+    'exp_cdg_sweep': CACHE_DIR / 'cdg_sweep',
+    'util_histogram_cache': CACHE_DIR / 'histogram',
 }
 
 # Figures output directory

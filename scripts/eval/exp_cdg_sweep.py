@@ -13,13 +13,13 @@ Formula: score = count^alpha * mean(mean_conf + beta * gradient)
 Where gradient = mean(last P%) - mean(first P%)
 
 Usage:
-    python exp3_cdg_hyperparam_sweep.py              # Run full sweep
-    python exp3_cdg_hyperparam_sweep.py --no-compute # Load cache, print tables & regenerate figures
-    python exp3_cdg_hyperparam_sweep.py --resume     # Resume from partial cache if interrupted
+    python exp_cdg_sweep.py              # Run full sweep
+    python exp_cdg_sweep.py --no-compute # Load cache, print tables only
+    python exp_cdg_sweep.py --resume     # Resume from partial cache if interrupted
 
 Cache files:
-    results/exp3_cdg_sweep/sweep_cache.json    # Final cache for --no-compute
-    results/exp3_cdg_sweep/partial_cache.json  # Partial cache for --resume
+    results/cache/cdg_sweep/sweep_cache.json    # Final cache for --no-compute
+    results/cache/cdg_sweep/partial_cache.json  # Partial cache for --resume
 """
 import argparse
 import pickle
@@ -39,7 +39,7 @@ from config import (
 from dynasor.core.evaluator import math_equal
 
 # Output directory for results (local - small files only)
-OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp3_cdg_sweep'
+OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'cache' / 'cdg_sweep'
 
 # Stable cache file (no timestamp - for quick figure regeneration)
 CACHE_FILE = OUTPUT_DIR / 'sweep_cache.json'
@@ -478,122 +478,6 @@ def load_cache():
     return cache_data['results'], cache_data.get('best_params', {})
 
 
-def generate_figure(all_results: list, output_dir: Path):
-    """Generate beta sweep figure from results."""
-    try:
-        import matplotlib.pyplot as plt
-        import matplotlib.cm as cm
-    except ImportError:
-        print("matplotlib not available, skipping figure generation")
-        return
-
-    # Group results by (model, dataset, alpha, position_pct)
-    grouped = defaultdict(lambda: defaultdict(list))
-    for r in all_results:
-        key = (r['model'], r['dataset'], r['alpha'], r['position_pct'])
-        grouped[key][r['beta']].append(r['accuracy'])
-
-    # Create figure for each position_pct
-    for position_pct in POSITION_PCT_VALUES:
-        fig, axes = plt.subplots(len(DATASETS), len(ALPHA_VALUES),
-                                  figsize=(4 * len(ALPHA_VALUES), 3.5 * len(DATASETS)),
-                                  squeeze=False)
-
-        colors = {
-            'deepseek8b': '#1f77b4',
-            'gptoss20b': '#ff7f0e',
-            'gemma3_27b': '#2ca02c',
-            'qwq32b': '#d62728',
-        }
-
-        for row_idx, model in enumerate(DATASETS.keys()):
-            for col_idx, alpha in enumerate(ALPHA_VALUES):
-                ax = axes[row_idx, col_idx]
-
-                for dataset in DATASETS[model].keys():
-                    key = (model, dataset, alpha, position_pct)
-                    if key in grouped:
-                        beta_data = grouped[key]
-                        betas = sorted(beta_data.keys())
-                        accs = [100 * np.mean(beta_data[b]) for b in betas]
-
-                        ax.plot(betas, accs, 'o-', label=dataset,
-                               linewidth=2, markersize=5)
-
-                ax.set_xlabel('β (gradient weight)', fontsize=10)
-                ax.set_ylabel('Accuracy (%)', fontsize=10)
-                ax.set_title(f'{model} (α={alpha})', fontsize=11)
-                ax.legend(loc='best', fontsize=8)
-                ax.grid(True, alpha=0.3)
-                ax.set_ylim(0, 100)
-
-        plt.suptitle(f'CDG Beta Sweep (position_pct={position_pct}%)', fontsize=14, fontweight='bold')
-        plt.tight_layout()
-
-        fig_path = output_dir / f'beta_sweep_pos{position_pct}.png'
-        plt.savefig(fig_path, dpi=150, bbox_inches='tight')
-        plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
-        print(f'Figure saved to: {fig_path}')
-        plt.close(fig)
-
-    # Also create a summary figure: best accuracy per model across all params
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-
-    model_names = list(DATASETS.keys())
-    x = np.arange(len(model_names))
-    width = 0.2
-
-    for i, position_pct in enumerate(POSITION_PCT_VALUES):
-        for j, alpha in enumerate(ALPHA_VALUES):
-            best_accs = []
-            for model in model_names:
-                # Find best beta for this model/alpha/position
-                model_best = 0
-                for dataset in DATASETS[model].keys():
-                    key = (model, dataset, alpha, position_pct)
-                    if key in grouped:
-                        for beta, accs in grouped[key].items():
-                            model_best = max(model_best, 100 * np.mean(accs))
-                best_accs.append(model_best)
-
-    # Simplified: just show best overall per model
-    best_per_model = []
-    best_params_per_model = []
-    for model in model_names:
-        best = 0
-        best_p = None
-        for r in all_results:
-            if r['model'] == model and r['accuracy'] > best:
-                best = r['accuracy']
-                best_p = (r['alpha'], r['beta'], r['position_pct'])
-        best_per_model.append(100 * best)
-        best_params_per_model.append(best_p)
-
-    bars = ax.bar(x, best_per_model, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
-
-    ax.set_xlabel('Model', fontsize=12)
-    ax.set_ylabel('Best Accuracy (%)', fontsize=12)
-    ax.set_title('Best CDG Accuracy per Model', fontsize=14)
-    ax.set_xticks(x)
-    ax.set_xticklabels(model_names)
-    ax.set_ylim(0, 100)
-
-    # Add param labels on bars
-    for i, (bar, params) in enumerate(zip(bars, best_params_per_model)):
-        if params:
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                   f'α={params[0]}\nβ={params[1]}\nP={params[2]}%',
-                   ha='center', va='bottom', fontsize=8)
-
-    plt.tight_layout()
-
-    fig_path = output_dir / 'best_accuracy_summary.png'
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
-    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
-    print(f'Summary figure saved to: {fig_path}')
-    plt.close(fig)
-
-
 def print_tables_from_cache(all_results: list):
     """Print sweep tables from cached results (same format as during computation)."""
     print()
@@ -681,5 +565,3 @@ if __name__ == '__main__':
         print_tables_from_cache(all_results)
     else:
         all_results, best_params = run_sweep(resume=args.resume)
-
-    generate_figure(all_results, OUTPUT_DIR)

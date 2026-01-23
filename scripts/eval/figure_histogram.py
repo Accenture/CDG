@@ -59,11 +59,11 @@ def setup_matplotlib():
 
 def load_histogram_cache(model: str, dataset: str) -> dict:
     """Load cached histogram metrics for a model-dataset pair."""
-    cache_dir = OUTPUT_DIRS['plot_distributions'] / 'cache'
+    cache_dir = OUTPUT_DIRS['util_histogram_cache']
     cache_file = cache_dir / f'{model}_{dataset}_metrics.json'
 
     if not cache_file.exists():
-        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun plot_distributions.py first.")
+        raise FileNotFoundError(f"Cache not found: {cache_file}\nRun util_histogram_cache.py first.")
 
     with open(cache_file, 'r') as f:
         return json.load(f)
@@ -214,12 +214,11 @@ def generate_single_histogram_figure(model: str, dataset: str, output_path: Path
 
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
 
-    png_path = output_path.with_suffix('.png')
-    plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
+    # png_path = output_path.with_suffix('.png')
+    # plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
 
     print(f"Generated: {model_display} × {dataset_display}")
     print(f"  PDF: {output_path}")
-    print(f"  PNG: {png_path}")
     print(f"  Questions: {meta['n_questions']}, Correct: {meta['n_correct_answers']}, Wrong: {meta['n_wrong_answers']}")
 
     plt.close(fig)

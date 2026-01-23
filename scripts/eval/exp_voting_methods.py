@@ -14,13 +14,13 @@ Outputs:
 3. Full budget (512) comparison table: all methods × all datasets
 
 Usage:
-    python exp2_baseline_vs_cdg.py              # Run full analysis
-    python exp2_baseline_vs_cdg.py --no-compute # Load cache, print tables & regenerate figures
-    python exp2_baseline_vs_cdg.py --resume     # Resume from partial cache if interrupted
+    python exp_voting_methods.py              # Run full analysis
+    python exp_voting_methods.py --no-compute # Load cache, print tables only
+    python exp_voting_methods.py --resume     # Resume from partial cache if interrupted
 
 Cache files:
-    results/exp2_baseline_vs_cdg/cache.json         # Final cache for --no-compute
-    results/exp2_baseline_vs_cdg/partial_cache.json # Partial cache for --resume
+    results/cache/voting_methods/cache.json         # Final cache for --no-compute
+    results/cache/voting_methods/partial_cache.json # Partial cache for --resume
 """
 import argparse
 import pickle
@@ -41,7 +41,7 @@ from config import (
 # dynasor for math evaluation: pip install git+https://github.com/hao-ai-lab/Dynasor.git
 from dynasor.core.evaluator import math_equal
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp2_baseline_vs_cdg'
+OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'cache' / 'voting_methods'
 
 # Stable cache file (no timestamp - for quick figure regeneration)
 CACHE_FILE = OUTPUT_DIR / 'cache.json'
@@ -394,76 +394,6 @@ def load_cache():
 
 
 # ============================================================================
-# OUTPUT: SCALING TREND FIGURE
-# ============================================================================
-
-def generate_scaling_figure(all_results: list, output_dir: Path):
-    """Generate scaling trend figure: accuracy vs trace count."""
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib not available, skipping figure generation")
-        return
-
-    models = list(DATASETS.keys())
-    datasets = list(DATASETS[models[0]].keys())
-
-    fig, axes = plt.subplots(len(models), len(datasets),
-                              figsize=(4 * len(datasets), 3 * len(models)),
-                              squeeze=False)
-
-    method_styles = {
-        'majority': {'color': '#1f77b4', 'marker': 'o', 'linestyle': '-'},
-        'mean_weighted': {'color': '#ff7f0e', 'marker': 's', 'linestyle': '--'},
-        'top10_tail': {'color': '#2ca02c', 'marker': '^', 'linestyle': '-.'},
-        'cdg': {'color': '#d62728', 'marker': 'D', 'linestyle': '-'},
-    }
-
-    for row_idx, model in enumerate(models):
-        for col_idx, dataset in enumerate(datasets):
-            ax = axes[row_idx, col_idx]
-
-            for method in METHODS:
-                style = method_styles[method]
-                # Filter results for this model/dataset/method
-                method_results = [r for r in all_results
-                                  if r['model'] == model and r['dataset'] == dataset and r['method'] == method]
-
-                if method_results:
-                    method_results.sort(key=lambda x: x['trace_count'])
-                    x = [r['trace_count'] for r in method_results]
-                    y = [100 * r['accuracy'] for r in method_results]
-
-                    ax.plot(x, y,
-                           color=style['color'],
-                           marker=style['marker'],
-                           linestyle=style['linestyle'],
-                           label=METHOD_LABELS[method],
-                           linewidth=2, markersize=5)
-
-            ax.set_xscale('log', base=2)
-            ax.set_xlabel('Number of Traces', fontsize=10)
-            ax.set_ylabel('Accuracy (%)', fontsize=10)
-            ax.set_title(f'{model} - {dataset}', fontsize=11)
-            ax.set_ylim(0, 100)
-            ax.grid(True, alpha=0.3)
-            ax.set_xticks(TRACE_COUNTS)
-            ax.set_xticklabels([str(t) for t in TRACE_COUNTS], fontsize=8)
-
-            if row_idx == 0 and col_idx == 0:
-                ax.legend(loc='lower right', fontsize=8)
-
-    plt.suptitle('Accuracy vs Number of Traces', fontsize=14, fontweight='bold')
-    plt.tight_layout()
-
-    fig_path = output_dir / 'scaling_trend.png'
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
-    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
-    print(f'Scaling figure saved to: {fig_path}')
-    plt.close(fig)
-
-
-# ============================================================================
 # OUTPUT: SCALING TREND TABLE
 # ============================================================================
 
@@ -641,57 +571,6 @@ def generate_full_budget_table(all_results: list, output_dir: Path):
 
 
 # ============================================================================
-# OUTPUT: FULL BUDGET BAR CHART
-# ============================================================================
-
-def generate_full_budget_figure(all_results: list, output_dir: Path):
-    """Generate bar chart comparing methods at 512 traces."""
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib not available, skipping figure generation")
-        return
-
-    # Filter to 512 traces only
-    results_512 = [r for r in all_results if r['trace_count'] == 512]
-
-    models = list(DATASETS.keys())
-    x = np.arange(len(models))
-    width = 0.2
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    for i, method in enumerate(METHODS):
-        accs = []
-        for model in models:
-            model_results = [r for r in results_512 if r['model'] == model and r['method'] == method]
-            if model_results:
-                avg_acc = np.mean([r['accuracy'] for r in model_results])
-                accs.append(100 * avg_acc)
-            else:
-                accs.append(0)
-        ax.bar(x + i * width, accs, width, label=METHOD_LABELS[method], color=colors[i])
-
-    ax.set_xlabel('Model', fontsize=12)
-    ax.set_ylabel('Accuracy (%)', fontsize=12)
-    ax.set_title('Method Comparison at Full Budget (512 Traces)', fontsize=14)
-    ax.set_xticks(x + width * 1.5)
-    ax.set_xticklabels(models)
-    ax.legend(loc='upper left')
-    ax.set_ylim(0, 100)
-    ax.grid(True, alpha=0.3, axis='y')
-
-    plt.tight_layout()
-
-    fig_path = output_dir / 'full_budget_512_comparison.png'
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
-    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
-    print(f'512-only figure saved to: {fig_path}')
-    plt.close(fig)
-
-
-# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -720,17 +599,14 @@ if __name__ == '__main__':
     print('GENERATING OUTPUTS')
     print('=' * 100)
 
-    generate_scaling_figure(all_results, OUTPUT_DIR)
     generate_scaling_table(all_results, OUTPUT_DIR)
     generate_full_budget_table(all_results, OUTPUT_DIR)
-    generate_full_budget_figure(all_results, OUTPUT_DIR)
 
     print('\n' + '=' * 100)
     print('ALL OUTPUTS GENERATED')
     print('=' * 100)
     print(f'Output directory: {OUTPUT_DIR}')
     print('Files:')
-    print('  - scaling_trend.png/pdf     (accuracy vs trace count figure)')
+    print('  - cache.json                (cached results for figure scripts)')
     print('  - scaling_table.txt/csv     (detailed numbers for all trace counts)')
     print('  - full_budget_512_table.txt (512-only comparison)')
-    print('  - full_budget_512_comparison.png/pdf (512-only bar chart)')

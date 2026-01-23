@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Histogram Figures: Correct vs Wrong Answer Distributions
+Utility: Extract histogram metrics and save to cache.
 
-Generates histograms comparing confidence metrics for correct vs wrong answers.
-Reads directly from Yu's pickle files.
+Extracts confidence metrics for correct vs wrong answers from pickle files.
+Saves to cache JSON files for use by figure_histogram.py.
 
 Metrics:
 1. Vote Count (per answer) - majority voting
@@ -13,12 +13,12 @@ Metrics:
 5. Confidence Gradient (per trace)
 
 Usage:
-    python exp_histogram.py                            # Run all model/dataset combinations
-    python exp_histogram.py --model deepseek8b --dataset aime2024  # Single combination
-    python exp_histogram.py --no-compute               # Load cache, regenerate figures only
+    python util_histogram_cache.py                            # Run all model/dataset combinations
+    python util_histogram_cache.py --model deepseek8b --dataset aime2024  # Single combination
+    python util_histogram_cache.py --no-compute               # Load from cache only (skip computation)
 
 Cache files:
-    results/exp_histogram/cache/{model}_{dataset}_metrics.json
+    results/cache/histogram/{model}_{dataset}_metrics.json
 """
 import pickle
 import numpy as np
@@ -37,10 +37,10 @@ from config import (
 # dynasor for math evaluation: pip install git+https://github.com/hao-ai-lab/Dynasor.git
 from dynasor.core.evaluator import math_equal
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'exp_histogram'
+OUTPUT_DIR = Path(__file__).parent.parent.parent / 'results' / 'cache' / 'histogram'
 
 # Cache directory for storing extracted metrics
-CACHE_DIR = OUTPUT_DIR / 'cache'
+CACHE_DIR = OUTPUT_DIR
 
 
 # ============================================================================
@@ -294,64 +294,6 @@ def create_count_histogram(ax, correct_counts, wrong_counts, title='Vote Count D
     ax.legend(loc='upper right', fontsize=9)
 
 
-def generate_figure(model: str, dataset: str, metrics: dict, output_dir: Path):
-    """Generate combined figure for one model-dataset pair."""
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib not available")
-        return
-
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    axes = axes.flatten()
-
-    model_name = MODEL_NAMES.get(model, model)
-    dataset_name = DATASET_NAMES.get(dataset, dataset)
-
-    # 1. Vote count
-    create_count_histogram(axes[0], metrics['correct']['vote_count'], metrics['wrong']['vote_count'],
-                          title='(a) Vote Count (per answer)')
-
-    # 2. Mean confidence
-    create_histogram(axes[1], metrics['correct']['mean_conf'], metrics['wrong']['mean_conf'],
-                    title='(b) Mean Confidence (per trace)', xlabel='Mean Token Confidence')
-
-    # 3. Tail confidence
-    create_histogram(axes[2], metrics['correct']['tail_conf'], metrics['wrong']['tail_conf'],
-                    title='(c) Tail Confidence (per trace)', xlabel='Tail Token Confidence')
-
-    # 4. CDG score
-    create_histogram(axes[3], metrics['correct']['cdg_score'], metrics['wrong']['cdg_score'],
-                    title='(d) CDG Score (per answer)', xlabel='CDG Score')
-
-    # 5. Gradient
-    create_histogram(axes[4], metrics['correct']['gradient'], metrics['wrong']['gradient'],
-                    title='(e) Confidence Gradient (per trace)', xlabel='Gradient (Tail - Head)')
-
-    # 6. Summary
-    axes[5].axis('off')
-    summary = f"""Summary
-
-Model: {model_name}
-Dataset: {dataset_name}
-
-Questions: {metrics['meta']['n_questions']}
-Correct answers: {metrics['meta']['n_correct_answers']}
-Wrong answers: {metrics['meta']['n_wrong_answers']}
-"""
-    axes[5].text(0.1, 0.9, summary, transform=axes[5].transAxes,
-                fontsize=11, verticalalignment='top', family='monospace')
-
-    fig.suptitle(f'Correct vs Wrong: {model_name} on {dataset_name}', fontsize=14, fontweight='bold')
-    plt.tight_layout()
-
-    fig_path = output_dir / f'histogram_{model}_{dataset}.png'
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
-    plt.savefig(fig_path.with_suffix('.pdf'), dpi=300, bbox_inches='tight')
-    print(f'Saved: {fig_path}')
-    plt.close(fig)
-
-
 def main():
     parser = argparse.ArgumentParser(description='Generate histogram figures')
     parser.add_argument('--model', type=str, default=None, help='Specific model')
@@ -374,12 +316,12 @@ def main():
         print('MODE: force-recompute (extracting fresh metrics)')
 
     def process_pair(model, dataset):
-        """Process a single model-dataset pair."""
+        """Process a single model-dataset pair and save cache."""
         # Try cache first (unless --force-recompute)
         if not args.force_recompute:
             metrics = load_cache(model, dataset)
             if metrics:
-                generate_figure(model, dataset, metrics, OUTPUT_DIR)
+                print(f'  Loaded from cache: {model}-{dataset}')
                 return True
 
         # If no-compute mode and no cache, skip
@@ -393,7 +335,6 @@ def main():
         metrics = extract_metrics(dataset_path, cdg_params)
         if metrics:
             save_cache(model, dataset, metrics)
-            generate_figure(model, dataset, metrics, OUTPUT_DIR)
             return True
         return False
 
@@ -411,7 +352,7 @@ def main():
         process_pair(model, dataset)
 
     print('\n*** Cache is stored in: {} ***'.format(CACHE_DIR))
-    print('Use --no-compute to regenerate figures from cache')
+    print('Use figure_histogram.py to generate figures from cache')
     print('\nDone!')
 
 

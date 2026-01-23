@@ -1,514 +1,190 @@
-# HMMT Inference and Analysis Instructions
+# Sampling Credit: CDG Voting for Math Reasoning
 
-This guide explains how to run HMMT inference and analyze results using DeepConf voting methods.
-
----
-
-## Table of Contents
-1. [Data Preparation](#data-preparation)
-2. [Overview](#overview)
-3. [Running Inference](#running-inference)
-4. [Analyzing Results](#analyzing-results)
-5. [Understanding the Output](#understanding-the-output)
-6. [Troubleshooting](#troubleshooting)
+This repository contains code for evaluating Count-Dampened Gradient (CDG) voting methods on math reasoning benchmarks.
 
 ---
 
-## Data Preparation (Please run these 4 datasets and inference in priority order : aime2025 -> hmmt2025 -> aime2024 -> brumo2025 )
+## Setup
 
-### Overview
-
-Before running inference, you need to prepare your dataset in JSONL format. The `prepare_aime2025.py` script provides an example of how to convert datasets from HuggingFace to the required format.
-
-### Required JSONL Format
-
-Each line in the JSONL file should be a JSON object with two fields:
-```json
-{"question": "What is 2+2?", "answer": "4"}
-{"question": "Find the value of x if 3x = 9", "answer": "3"}
-```
-
-**Fields**:
-- `question`: The problem statement (string)
-- `answer`: The ground truth answer (string)
-
-### Example: Using prepare_aime2025.py
-
-**Script location**: `/path/to/sampling_credit/scripts/prepare_aime2025.py`
-
-#### Step 1: Review the Script
-
-```python
-"""
-Prepare AIME 2025 dataset in JSONL format for deepconf experiments.
-"""
-import json
-from datasets import load_dataset
-
-def main():
-    # Load dataset from HuggingFace
-    print("Loading AIME 2025 dataset...")
-    dataset = load_dataset("MathArena/aime_2025", split="train")
-
-    # Convert to JSONL
-    output_file = "aime_2025.jsonl"
-    with open(output_file, "w", encoding="utf-8") as f:
-        for example in dataset:
-            entry = {
-                "question": example["problem"],
-                "answer": str(example["answer"])
-            }
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-    print(f"Converted {len(dataset)} examples to {output_file}")
-```
-
-#### Step 2: Run the Data Preparation Script
+### Clone with Submodules
 
 ```bash
-cd /path/to/sampling_credit
-
-# Run the preparation script
-python scripts/prepare_aime2025.py
+git clone --recurse-submodules <repo-url>
+cd sampling_credit
 ```
 
-**Output**:
-```
-Loading AIME 2025 dataset...
-Converted 30 examples to aime_2025.jsonl
-
-First example:
-Question: In rectangle ABCD, AB = 20 and BC = 10...
-Answer: 100
-```
-
-#### Step 3: Verify the Output
+### If Already Cloned (pull submodules)
 
 ```bash
-# Check the first few lines
-head -3 aime_2025.jsonl
-
-# Count total questions
-wc -l aime_2025.jsonl
+git submodule update --init --recursive
 ```
 
-#### Step 4: Move to Storage Location
+### Update Submodules to Latest
 
 ```bash
-# Create directory if needed
-mkdir -p /eph/nvme0/aime_2025/
-
-# Move the JSONL file
-mv aime_2025.jsonl /eph/nvme0/aime_2025/
+git submodule update --remote --merge
 ```
 
-### Preparing Your Own Dataset
+### Submodules
 
-To prepare a custom dataset, modify the script to match your data source:
+| Submodule | Source |
+|-----------|--------|
+| `deepconf` | [facebookresearch/deepconf](https://github.com/facebookresearch/deepconf) |
+| `gpt-oss` | [openai/gpt-oss](https://github.com/openai/gpt-oss) |
 
-**Example for HMMT**:
-```python
-import json
+---
 
-def prepare_hmmt():
-    # Your custom data loading logic
-    problems = [
-        {"problem": "Question 1 text", "solution": "42"},
-        {"problem": "Question 2 text", "solution": "\\frac{1}{2}"},
-        # ... more problems
-    ]
+## Project Structure
 
-    output_file = "hmmt_feb_2025.jsonl"
-    with open(output_file, "w", encoding="utf-8") as f:
-        for item in problems:
-            entry = {
-                "question": item["problem"],
-                "answer": item["solution"]
-            }
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-    print(f"Prepared {len(problems)} questions")
-
-if __name__ == "__main__":
-    prepare_hmmt()
 ```
-
-### Important Notes
-
-1. **Answer Format**: Keep answers as strings to preserve LaTeX formatting (e.g., `"\frac{1}{2}"`, `"3.14"`)
-2. **Encoding**: Always use UTF-8 encoding to handle mathematical symbols
-3. **Validation**: Check first few examples after preparation to ensure correct format
-4. **Storage**: Place datasets in `/eph/nvme0/` for faster I/O during inference
-
-### Dataset Locations
-
-Standard dataset paths used in this project:
-```
-/eph/nvme0/aime_2025/aime_2025.jsonl              # AIME 2025
-/eph/nvme0/hmmt_feb_2025/hmmt_feb_2025.jsonl      # HMMT February 2025
+sampling_credit/
+├── scripts/
+│   ├── prepare_data/       # Dataset preparation scripts
+│   ├── inference/          # Model inference scripts
+│   └── eval/               # Evaluation and figure generation
+├── results/
+│   ├── cache/              # Cached experiment results
+│   │   ├── voting_methods/ # exp_voting_methods.py cache
+│   │   ├── cdg_sweep/      # exp_cdg_sweep.py cache
+│   │   └── histogram/      # util_histogram_cache.py cache
+│   └── figures/            # Generated figures
+│       └── appendix/       # Appendix figures
+├── deepconf/               # [submodule] DeepConf baseline
+├── gpt-oss/                # [submodule] GPT-OSS model support
+└── README.md
 ```
 
 ---
 
-## Overview
+## Quick Start
 
-### What These Scripts Do
+### 1. Data Preparation
 
-**Inference Script** (`run_hmmt_3q.sh`):
-- Runs offline batch inference on HMMT February 2025 dataset
-- Uses DeepSeek-R1-0528-Qwen3-8B model with vLLM
-- Generates 512 traces per question
-- Processes questions in chunks of 3 to avoid memory issues
-- Outputs pickle files with traces and confidence scores
+```bash
+cd scripts/prepare_data
+./prepare_all_datasets.sh
+```
 
-**Analysis Script** (`analyze_hmmt_results_deepconfs.py`):
-- Loads generated pickle files
-- Evaluates all DeepConf voting methods
-- Compares accuracy across different voting strategies
-- Reports token usage statistics
+This prepares all datasets (AIME 2024, AIME 2025, BRUMO 2025, HMMT 2025) in JSONL format.
+
+### 2. Run Inference
+
+```bash
+cd scripts/inference
+./run.sh --model <model> --dataset <dataset>
+```
+
+See `scripts/inference/README.md` for detailed inference instructions.
+
+### 3. Run Evaluation
+
+```bash
+cd scripts/eval
+./run.sh --task all
+```
+
+Available tasks:
+- `cache` - Generate all caches (voting, histogram, sweep)
+- `figures` - Generate all figures (requires caches)
+- `sweep` - Run CDG hyperparameter sweep only
+- `position` - Run position ablation experiment
+- `all` - Run everything (cache + figures)
 
 ---
 
-## Running Inference
+## Evaluation Scripts
 
-### Prerequisites
+### Experiment Scripts (generate caches)
 
-1. **Dataset**: HMMT February 2025 dataset at `/eph/nvme0/hmmt_feb_2025/hmmt_feb_2025.jsonl`
-2. **Environment**: DeepConf conda environment at `/eph/nvme0/env/deepconf`
-3. **GPU**: Requires 8 GPUs (tensor_parallel_size=8)
-4. **Disk**: ~100GB free space in `/eph/nvme0/` for output
+| Script | Description |
+|--------|-------------|
+| `exp_voting_methods.py` | Compare voting methods (Majority, Mean, Top10 Tail, CDG) |
+| `exp_cdg_sweep.py` | CDG hyperparameter sweep (alpha, beta, position_pct) |
+| `util_histogram_cache.py` | Extract histogram metrics for correct/wrong distributions |
 
-### Step 1: Start a Screen Session
+### Figure Scripts (generate figures from caches)
 
-**Important**: Inference takes several hours, so run it in a screen session to prevent interruption.
-
-```bash
-# Create a new screen session
-screen -S hmmt_inference
-
-# Or reattach to existing session
-screen -r hmmt_inference
-```
-
-### Step 2: Navigate to Project Directory
-
-```bash
-cd /path/to/sampling_credit
-```
-
-### Step 3: Run the Inference using scripts/run_offline_batch_3_q.py via run_hmmt_3q.sh
-
-```bash
-# Make sure the script is executable
-chmod +x scripts/run_hmmt_3q.sh
-
-# Run the script
-./scripts/run_hmmt_3q.sh
-```
-
-### Important!!!!!!!! Script Parameters and system prompt and pahts to HF_HOME and TRANSFORMERS_CACHE. Read paper Table 11 to make sure you use the correct setups! If you don't specify top-p, the defualt is top-p = 0.95 already. If you don't specify top-k, the defualt is that top-k = -1, meaning top-k is disabled.  Otherwise, speify these values to the right values in paper. 
-
-The inference script uses these parameters:
-- `--dataset`: Path to HMMT JSONL file
-- `--budget`: Number of traces per question (512)
-- `--rid`: Run identifier (hmmt2025run3qdeepseek8b)
-- `--max_tokens`: Maximum tokens per trace (64000)
-- `--temperature`: Sampling temperature (0.6)
-- `--model`: Model name (deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)
-- `--tensor_parallel_size`: Number of GPUs (8)
-- `--chunk_size`: Save how often Questions per batch (3)
-- '--top_k': top-k value for vllm
-- '--top_p' : top-p value for vllm
-
-Read Table 11 in paper, use those paramters, Make sure to add the top-k parameters to the Qwen model and GPT-OSS-20B/120B models. and change --max_tokens for each model. You DO NOT need to change run_offline_batch_3_q.py to modify these paramters . Just change your run.sh file to change paramters. 
-
-For system prompt: read below from paper under Table 11:
-Prompt templates: For Qwen3 and GPT-OSS, we append the same instruction to every problem
-prompt: “Please reason step by step, and put your final answer within \boxed{}.” For GPT-OSS, we additionally keep the provider’s official system prompt and enable the reasoning effort = high setting. For DeepSeek-8B, we use the official system prompt and put the problem in the user message.
-
-Important!!!!! Remember to adjust your HF_HOME and TRANSFORMERS_CACHE at the beginning of run_offline_batch_3_q.py
-
-### Output Location and give permission to your output folders!!!!!!!!!!! Make sure your folder exist!
-
-Results are saved to:
-```
-/eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b/
-```
-
-Each question generates a pickle file:
-```
-qid<N>_<timestamp>.pkl
-```
-
-### Monitoring Progress
-
-Check the inference log:
-```bash
-tail -f /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run/inference.log
-```
-
-### Detaching from Screen
-
-Once inference starts:
-1. Press `Ctrl+A`, then `D` to detach
-2. Inference continues running in background
-3. Reattach anytime with `screen -r hmmt_inference`
+| Script | Description |
+|--------|-------------|
+| `figure_scaling.py` | Main scaling figure (accuracy vs trace count) |
+| `figure_scaling_appendix.py` | Per-model scaling figures for appendix |
+| `figure_histogram.py` | Confidence distribution histograms |
+| `figure_confidence_curve.py` | Confidence calibration curves |
+| `figure_position_appendix.py` | Position_pct ablation figure |
 
 ---
 
-## Analyzing Results
+## Datasets
 
-### Prerequisites
-
-1. **Completed inference**: All pickle files generated
-2. **DeepConf environment**: Contains required dependencies (dynasor)
-
-### Step 1: Activate Environment
-
-```bash
-# Use the DeepConf conda environment
-/eph/nvme0/env/deepconf/bin/python
-```
-
-### Step 2: Run Analysis Script
-
-**Basic analysis** (summary statistics only):
-```bash
-/eph/nvme0/env/deepconf/bin/python scripts/analyze_hmmt_results_deepconfs.py \
-    --results_dir /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b
-```
-
-**Detailed analysis** (includes per-question breakdown):
-```bash
-/eph/nvme0/env/deepconf/bin/python scripts/analyze_hmmt_results_deepconfs.py \
-    --results_dir /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b \
-    --detailed
-```
-
-### Analysis Parameters
-
-- `--results_dir`: Directory containing pickle files (required)
-- `--detailed`: Flag to print per-question results (optional)
+| Dataset | Description |
+|---------|-------------|
+| `aime2024` | AIME 2024 (30 questions) |
+| `aime2025` | AIME 2025 (30 questions) |
+| `brumo2025` | BRUMO 2025 |
+| `hmmt2025` | HMMT February 2025 (30 questions) |
 
 ---
 
-## Understanding the Output
+## Models
 
-### 1. Overall Statistics
-
-```
-📊 Overall Statistics
---------------------------------------------------------------------------------
-Total questions analyzed: 30
-Valid results: 30
-```
-
-Shows how many questions were successfully processed.
-
-### 2. Token Usage
-
-```
-💰 Token Usage
---------------------------------------------------------------------------------
-Total tokens: 15,234,567
-Average tokens per question: 507,819 ± 12,345
-Average traces per question: 512
-```
-
-- **Total tokens**: Cumulative tokens across all questions
-- **Average per question**: Mean and standard deviation
-- **Average traces**: Should be ~512 (your budget)
-
-### 3. Voting Methods Accuracy
-
-```
-🗳️  VOTING METHODS ACCURACY (DeepConf)
-================================================================================
-Method                              Accuracy     Correct/Total   Avg Conf
---------------------------------------------------------------------------------
-top10_tail_filtered                 83.33%       25/30           0.1234
-bottom_window_weighted              80.00%       24/30           0.1156      ⭐
-majority_vote                       76.67%       23/30           0.1089
-uniform_avg                         73.33%       22/30           0.1045
-
-⭐ = Main DeepConf method (bottom window weighted)
-```
-
-**Voting Methods Explained**:
-
-1. **top10_tail_filtered**: Filter top 10% by tail confidence, then vote
-2. **bottom_window_weighted**: Weight by bottom 10% sliding window confidence
-3. **majority_vote**: Simple majority voting
-4. **uniform_avg**: Uniform confidence averaging
-
-**Best Method**: Highest accuracy is the winner (top10_tail_filtered in example)
-
-### 4. Failed Questions
-
-```
-❌ Questions wrong by best method (top10_tail_filtered):
-   QIDs: [9, 12, 16, 18, 19]
-```
-
-Lists question IDs that the best method failed on.
-
-### 5. Detailed Per-Question Results (with --detailed)
-
-```
-📋 DETAILED PER-QUESTION RESULTS
-================================================================================
-
-QID   Ground Truth         top10_tail_fi    bottom_window    majority_vote
---------------------------------------------------------------------------------
-1     42                   ✓ 42             ✓ 42             ✓ 42
-2     \frac{1}{2}          ✓ \frac{1}{2}    ✓ \frac{1}{2}    ✗ \frac{2}{4}
-9     3                    ✗ 5              ✗ 5              ✗ 5
-```
-
-- ✓ = Correct answer
-- ✗ = Wrong answer
+| Model Key | Model Name |
+|-----------|------------|
+| `deepseek8b` | DeepSeek-R1-8B |
+| `gemma3_27b` | Gemma-3-27B |
+| `qwq32b` | QWQ-32B |
+| `gptoss20b` | gpt-oss-20B |
 
 ---
 
-## Troubleshooting
+## Configuration
 
-### Issue: Inference Script Fails Immediately
+All paths and parameters are centralized in config files:
 
-**Check**:
-1. GPU availability: `nvidia-smi`
-2. Dataset exists: `ls -lh /eph/nvme0/hmmt_feb_2025/hmmt_feb_2025.jsonl`
-3. Output directory writable: `touch /eph/nvme0/hmmt_feb_2025_run_512_results/test.txt`
-
-**Solution**: Ensure all prerequisites are met
-
-### Issue: Out of Memory (OOM) Errors
-
-**Symptoms**: CUDA out of memory errors during inference
-
-**Solutions**:
-1. Reduce `--chunk_size` from 3 to 2 or 1
-2. Reduce `--budget` from 512 to 256
-3. Check GPU memory: `nvidia-smi`
-
-### Issue: Analysis Script Can't Find Files
-
-**Error**: `❌ No pickle files found!`
-
-**Check**:
-1. Results directory exists: `ls /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b/`
-2. Pickle files present: `ls /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b/*.pkl | wc -l`
-
-**Solution**: Verify inference completed successfully
-
-### Issue: Import Errors in Analysis Script
-
-**Error**: `ModuleNotFoundError: No module named 'dynasor'`
-
-**Solution**: Use the correct conda environment:
-```bash
-/eph/nvme0/env/deepconf/bin/python scripts/analyze_hmmt_results_deepconfs.py ...
-```
-
-### Issue: Mathematical Comparison Errors
-
-**Symptoms**: Many answers marked wrong despite looking correct
-
-**Check**: LaTeX formatting differences (e.g., `\frac{1}{2}` vs `0.5`)
-
-**Note**: The script uses `math_equal()` from dynasor which handles mathematical equivalence
+- `scripts/eval/config.py` - Evaluation configuration
+- `scripts/inference/config.py` - Inference configuration
+- `scripts/inference/config.sh` - Shell configuration for inference
 
 ---
 
-## Quick Reference
+## CDG Voting Method
 
-### Run Full Pipeline
-
-```bash
-# 1. Start screen session
-screen -S hmmt_inference
-
-# 2. Run inference (takes several hours)
-cd /path/to/sampling_credit
-./scripts/run_hmmt_3q.sh
-
-# 3. Detach from screen (Ctrl+A, then D)
-
-# 4. Later: Analyze results
-/eph/nvme0/env/deepconf/bin/python scripts/analyze_hmmt_results_deepconfs.py \
-    --results_dir /eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b \
-    --detailed
-```
-
-### Directory Structure
+CDG (Count-Dampened Gradient) combines vote count with confidence gradient:
 
 ```
-/eph/nvme0/
-├── hmmt_feb_2025/
-│   └── hmmt_feb_2025.jsonl                    # Input dataset
-├── hmmt_feb_2025_run_512_results/
-│   └── hmmt2025run3qdeepseek8b/               # Output directory
-│       ├── qid1_<timestamp>.pkl               # Question 1 results
-│       ├── qid2_<timestamp>.pkl               # Question 2 results
-│       └── ...                                # More results
-└── env/
-    └── deepconf/                              # Conda environment
+score = count^alpha * mean(mean_conf + beta * gradient)
 ```
 
-### Key Files
-
-- **Inference script**: `/path/to/sampling_credit/scripts/run_hmmt_3q.sh`
-- **Analysis script**: `/path/to/sampling_credit/scripts/analyze_hmmt_results_deepconfs.py`
-- **Results directory**: `/eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run3qdeepseek8b/`
-
----
-
-## Expected Results
-
-For HMMT February 2025 with 512 traces:
-- **Total questions**: 30
-- **Expected accuracy**: 75-85% (depending on voting method)
-- **Runtime**: 4-8 hours (depending on GPU availability)
-- **Storage**: ~50-100GB for all pickle files
-- **Token usage**: ~15M tokens total
+Where:
+- `count` = number of traces voting for this answer
+- `alpha` = count dampening factor (default: 0.5)
+- `beta` = gradient weight (model-specific)
+- `gradient` = mean(last P%) - mean(first P%) of confidence trajectory
 
 ---
 
-## Additional Notes
+## Output
 
-### Why Chunk Size = 3?
+### Caches
+- `results/cache/voting_methods/cache.json` - Voting method comparison results
+- `results/cache/cdg_sweep/sweep_cache.json` - Hyperparameter sweep results
+- `results/cache/histogram/*.json` - Per model-dataset histogram metrics
 
-Processing 3 questions at a time balances:
-- **Memory efficiency**: Prevents OOM with 512 traces/question
-- **Speed**: Parallelizes within each chunk
-- **Reliability**: Smaller chunks = easier to resume if interrupted
-
-### Understanding Confidence Scores
-
-Confidence scores are computed using:
-- **KL divergence** from top-20 logprobs at each token
-- **Lower scores** = higher confidence
-- **Typical range**: 10-20 for math problems
-
-### Voting Method Selection
-
-**For research**:
-- Use `top10_tail_filtered` - best performance on HMMT
-- Compare with `bottom_window_weighted` (original DeepConf)
-
-**For production**:
-- Use the method with highest accuracy on your validation set
+### Figures
+- `results/figures/*.pdf` - Main paper figures
+- `results/figures/appendix/*.pdf` - Appendix figures
 
 ---
 
-## Contact
+## Requirements
 
-For questions or issues:
-- Check script comments for inline documentation
-- Review error logs in `/eph/nvme0/hmmt_feb_2025_run_512_results/hmmt2025run/inference.log`
-- Verify environment setup matches prerequisites
+- Python 3.8+
+- numpy
+- matplotlib
+- dynasor (`pip install git+https://github.com/hao-ai-lab/Dynasor.git`)
+
+For inference:
+- vLLM
+- PyTorch
+- Transformers
 
 ---
-
-**Last Updated**: December 2025
-**Dataset**: HMMT February 2025
-**Model**: DeepSeek-R1-0528-Qwen3-8B

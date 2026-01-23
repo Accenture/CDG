@@ -44,7 +44,7 @@ COLOR_CORRECT = '#2ca02c'  # Green
 COLOR_WRONG = '#d62728'    # Red
 
 # Cache directory
-CACHE_DIR = OUTPUT_DIRS.get('plot_distributions', FIGURES_DIR.parent / 'exp_histogram') / 'confidence_curve_cache'
+CACHE_DIR = OUTPUT_DIRS.get('util_histogram_cache', FIGURES_DIR.parent / 'cache' / 'histogram') / 'confidence_curve_cache'
 
 
 # =============================================================================
@@ -289,9 +289,9 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
     plt.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
     print(f"\nFigure saved to: {output_path}")
 
-    png_path = output_path.with_suffix('.png')
-    plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
-    print(f"PNG preview saved to: {png_path}")
+    # png_path = output_path.with_suffix('.png')
+    # plt.savefig(png_path, format='png', bbox_inches='tight', dpi=300)
+    # print(f"PNG preview saved to: {png_path}")
 
     plt.close(fig)
     return output_path
