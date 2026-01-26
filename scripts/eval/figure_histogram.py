@@ -137,10 +137,10 @@ def plot_gradient_panel(ax, dataset: str):
                     f'{val:.1f}',
                     ha='center', va='bottom', fontsize=12, fontweight='bold')
 
-    ax.set_xlabel(r'(d) Direction of $\nabla C_{\ell}$ (4 models)', fontweight='bold')
+    ax.set_xlabel(r'(d) Direction of $\Delta C_{\ell}$ (4 models)', fontweight='bold')
     ax.set_ylabel('Percentage (%)', fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels([r'Correct ($\nabla C_{\ell} > 0$)', r'Wrong ($\nabla C_{\ell} < 0$)'])
+    ax.set_xticklabels([r'Correct ($\Delta C_{\ell} > 0$)', r'Wrong ($\Delta C_{\ell} < 0$)'])
     ax.set_ylim([0, 115])
     ax.legend(loc='upper right', ncol=2, framealpha=0.9,
               edgecolor='gray', fontsize=12, handlelength=1.0, handletextpad=0.3,
