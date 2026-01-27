@@ -18,8 +18,8 @@ from pathlib import Path
 # ============================================================================
 
 # Base directory containing all inference result pickle files.
-# Change this to "/path/to/result" when sharing publicly.
-RESULT_BASE_PATH = "/home/azureuser/cloudfiles/code/Users/yu.bu.wang/sampling_credit/result_ready_paper"
+# Change this to your local path where the results are stored.
+RESULT_BASE_PATH = "/path/to/result"
 
 # ============================================================================
 # DATASET PATHS (relative to RESULT_BASE_PATH)

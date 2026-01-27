@@ -6,23 +6,20 @@ This repository contains code for evaluating Count-Dampened Gradient (CDG) votin
 
 ## Setup
 
-### Clone with Submodules
+### From Zip File
+
+```bash
+unzip submission.zip -d sampling_credit
+cd sampling_credit
+git init
+git submodule update --init
+```
+
+### From Git Repository
 
 ```bash
 git clone --recurse-submodules <repo-url>
 cd sampling_credit
-```
-
-### If Already Cloned (pull submodules)
-
-```bash
-git submodule update --init --recursive
-```
-
-### Update Submodules to Latest
-
-```bash
-git submodule update --remote --merge
 ```
 
 ### Submodules

@@ -15,9 +15,8 @@ __pycache__/
 .venv/
 venv/
 
-# API keys (but gemini_api_key.txt is tracked with placeholder)
+# API keys
 *_api_key.txt
-!scripts/inference/gemini_api_key.txt
 
 # IDE
 .idea/

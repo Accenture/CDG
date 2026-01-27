@@ -106,31 +106,6 @@ export DEEPSEEK_R1_LLAMA_70B_TOP_K="-1"
 export DEEPSEEK_R1_LLAMA_70B_MAX_TOKENS="32768"
 
 # ============================================================
-# GEMINI API MODELS
-# ============================================================
-
-# Gemini 2.0 Flash (cheapest, good for experiments)
-export GEMINI_2_0_FLASH_MODEL="gemini-2.0-flash"
-export GEMINI_2_0_FLASH_TEMPERATURE="1.0"
-export GEMINI_2_0_FLASH_TOP_P="0.95"
-export GEMINI_2_0_FLASH_TOP_K="40"
-export GEMINI_2_0_FLASH_MAX_TOKENS="65536"
-
-# Gemini 2.5 Flash (better reasoning, more expensive)
-export GEMINI_2_5_FLASH_MODEL="gemini-2.5-flash"
-export GEMINI_2_5_FLASH_TEMPERATURE="1.0"
-export GEMINI_2_5_FLASH_TOP_P="0.95"
-export GEMINI_2_5_FLASH_TOP_K="40"
-export GEMINI_2_5_FLASH_MAX_TOKENS="65536"
-
-# Gemini 2.5 Pro (best reasoning, most expensive)
-export GEMINI_2_5_PRO_MODEL="gemini-2.5-pro"
-export GEMINI_2_5_PRO_TEMPERATURE="1.0"
-export GEMINI_2_5_PRO_TOP_P="0.95"
-export GEMINI_2_5_PRO_TOP_K="40"
-export GEMINI_2_5_PRO_MAX_TOKENS="65536"
-
-# ============================================================
 # DEFAULT INFERENCE SETTINGS
 # ============================================================
 
