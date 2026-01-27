@@ -46,7 +46,9 @@ sampling_credit/
 │   ├── cache/              # Cached experiment results
 │   │   ├── voting_methods/ # exp_voting_methods.py cache
 │   │   ├── cdg_sweep/      # exp_cdg_sweep.py cache
+│   │   ├── pass_at_1/      # exp_pass_at_1.py cache
 │   │   └── histogram/      # util_histogram_cache.py cache
+│   │       └── significance_test_cache/  # significance_test_confidence_change.py cache
 │   └── figures/            # Generated figures
 │       └── appendix/       # Appendix figures
 ├── deepconf/               # [submodule] DeepConf baseline
@@ -100,7 +102,14 @@ Available tasks:
 |--------|-------------|
 | `exp_voting_methods.py` | Compare voting methods (Majority, Mean, Top10 Tail, CDG) |
 | `exp_cdg_sweep.py` | CDG hyperparameter sweep (alpha, beta, position_pct) |
+| `exp_pass_at_1.py` | Pass@1 baseline accuracy (single randomly sampled trace) |
 | `util_histogram_cache.py` | Extract histogram metrics for correct/wrong distributions |
+
+### Statistical Analysis Scripts
+
+| Script | Description |
+|--------|-------------|
+| `significance_test_confidence_change.py` | Mann-Whitney U / Welch's t-test for confidence change (correct vs wrong traces) |
 
 ### Figure Scripts (generate figures from caches)
 
@@ -167,7 +176,9 @@ Where:
 ### Caches
 - `results/cache/voting_methods/cache.json` - Voting method comparison results
 - `results/cache/cdg_sweep/sweep_cache.json` - Hyperparameter sweep results
+- `results/cache/pass_at_1/cache.json` - Pass@1 baseline results
 - `results/cache/histogram/*.json` - Per model-dataset histogram metrics
+- `results/cache/histogram/significance_test_cache/*.json` - Significance test raw data
 
 ### Figures
 - `results/figures/*.pdf` - Main paper figures
