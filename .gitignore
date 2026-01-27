@@ -1,6 +1,9 @@
 # PDFs
 *.pdf
 
+# Zips
+*.zip
+
 # Python cache
 __pycache__/
 *.py[cod]
