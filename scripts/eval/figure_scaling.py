@@ -223,6 +223,14 @@ def generate_scaling_figure(output_path: Path = None):
         'hmmt2025': '#bcbd22'     # Yellow-green
     }
 
+    # Markers for each dataset (for color-blind accessibility)
+    dataset_markers = {
+        'aime2024': 'o',      # circle
+        'aime2025': 's',      # square
+        'brumo2025': '^',     # triangle up
+        'hmmt2025': 'D'       # diamond
+    }
+
     dataset_labels = {
         'aime2024': 'AIME2024',
         'aime2025': 'AIME2025',
@@ -253,7 +261,7 @@ def generate_scaling_figure(output_path: Path = None):
     # Plot each dataset
     for dataset, accuracies in datasets_beta.items():
         ax4.plot(BETA_VALUES, accuracies,
-                 color=dataset_colors[dataset], marker='o', linewidth=1.5, markersize=5,
+                 color=dataset_colors[dataset], marker=dataset_markers[dataset], linewidth=1.5, markersize=5,
                  label=dataset_labels[dataset])
 
     # Section title for d panel (centered over narrower d area)

@@ -264,7 +264,7 @@ def generate_confidence_curve_figure(dataset: str = 'aime2025', output_path: Pat
 
         # Plot correct traces
         ax.errorbar(positions, stats['correct']['means'], yerr=stats['correct']['stds'],
-                    marker='s', markersize=5, linewidth=1.5, capsize=3,
+                    marker='o', markersize=5, linewidth=1.5, capsize=3,
                     label='Correct', color=COLOR_CORRECT, alpha=0.9)
 
         # Plot wrong traces

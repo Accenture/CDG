@@ -57,6 +57,14 @@ DATASET_COLORS = {
     'hmmt2025': '#bcbd22',
 }
 
+# Markers for datasets (for color-blind accessibility)
+DATASET_MARKERS = {
+    'aime2024': 'o',      # circle
+    'aime2025': 's',      # square
+    'brumo2025': '^',     # triangle up
+    'hmmt2025': 'D',      # diamond
+}
+
 # Cache file
 CACHE_DIR = OUTPUT_DIRS.get('exp_cdg_sweep', Path(__file__).parent.parent.parent / 'results' / 'cache' / 'cdg_sweep')
 CACHE_FILE = CACHE_DIR / 'position_sweep_cache.json'
@@ -257,8 +265,6 @@ def load_cache() -> dict:
 
 def plot_position_panel(ax, cache_data: dict, model: str, show_ylabel=False, show_legend=False):
     """Plot position ablation panel for one model (4 datasets)."""
-    from matplotlib.ticker import MaxNLocator
-
     results = cache_data['results']
     position_values = cache_data['position_pct_values']
 
@@ -278,17 +284,19 @@ def plot_position_panel(ax, cache_data: dict, model: str, show_ylabel=False, sho
 
         ax.plot(position_values, accuracies,
                 color=DATASET_COLORS[dataset],
-                marker='o', linewidth=1.5, markersize=5,
+                marker=DATASET_MARKERS[dataset], linewidth=1.5, markersize=5,
                 label=DATASET_DISPLAY[dataset])
 
     ax.set_xlabel(r'Position percentile $P$ (%)')
     ax.set_xticks(position_values)
     ax.set_xticklabels([str(p) for p in position_values])
+    ax.set_ylim([0, 100])
     ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
     if show_ylabel:
         ax.set_ylabel('Accuracy (%)')
+    else:
+        ax.set_yticklabels([])
 
     if show_legend:
         ax.legend(loc='lower left', ncol=2, framealpha=0.9, edgecolor='gray',
@@ -305,8 +313,8 @@ def generate_position_appendix_figure(cache_data: dict, output_path: Path = None
         output_path = APPENDIX_DIR / 'position_ablation_4models.pdf'
 
     # Create 1x4 figure (same dimensions as beta ablation)
-    fig, axes = plt.subplots(1, 4, figsize=(17.64, 3.5), dpi=300)
-    plt.subplots_adjust(wspace=0.13)
+    fig, axes = plt.subplots(1, 4, figsize=(14, 3.5), dpi=300)
+    plt.subplots_adjust(wspace=0.05)
 
     for idx, model in enumerate(MODEL_ORDER):
         ax = axes[idx]

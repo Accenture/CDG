@@ -68,6 +68,14 @@ DATASET_COLORS = {
     'hmmt2025': '#bcbd22',
 }
 
+# Markers for datasets (for color-blind accessibility)
+DATASET_MARKERS = {
+    'aime2024': 'o',      # circle
+    'aime2025': 's',      # square
+    'brumo2025': '^',     # triangle up
+    'hmmt2025': 'D',      # diamond
+}
+
 # Theoretical r values per model (for optimal beta range calculation)
 MODEL_R_VALUES = {
     'deepseek8b': 7.87,
@@ -230,7 +238,7 @@ def plot_beta_panel(ax, sweep_cache: dict, model: str, alpha: float = 0.5,
         accuracies = datasets_beta[dataset]
         ax.plot(BETA_VALUES, accuracies,
                 color=DATASET_COLORS[dataset],
-                marker='o', linewidth=1.5, markersize=5,
+                marker=DATASET_MARKERS[dataset], linewidth=1.5, markersize=5,
                 label=DATASET_DISPLAY[dataset])
 
     ax.set_xlabel(r'CDG weight $\beta$')
