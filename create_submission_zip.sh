@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create anonymous zip for paper submission
+# Create anonymous zip for paper supplementary materials
 #
 # Excludes (aligned with .gitignore):
 #   - .git/ : contains author info and commit history
@@ -12,7 +12,10 @@
 #   - .idea/, .vscode/ : IDE configs
 #   - .DS_Store, Thumbs.db : OS metadata files
 
-zip -r submission.zip . \
+# Clean up existing zip
+rm -f supplymentary_12618.zip
+
+zip -r supplymentary_12618.zip . \
     -x "*.git*" \
     -x "deepconf/*" \
     -x "gpt-oss/*" \
@@ -33,6 +36,6 @@ zip -r submission.zip . \
     -x "*.swo" \
     -x ".DS_Store" \
     -x "Thumbs.db" \
-    -x "submission.zip"
+    -x "supplymentary_12618.zip"
 
-echo "Created submission.zip"
+echo "Created supplymentary_12618.zip"
