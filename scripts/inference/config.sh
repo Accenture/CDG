@@ -9,20 +9,19 @@
 # BASE DIRECTORIES
 # ============================================================
 
-# Base directory for datasets (JSONL files) - use fast NVMe
-export DATASETS_BASE="/eph/nvme0/datasets"
+# Base directory for datasets (JSONL files)
+export DATASETS_BASE="/path/to/datasets"
 
 # Base directory for inference results output
 export OUTPUT_BASE="/path/to/sampling_credit_results"
-# export OUTPUT_BASE="/eph/nvme0/sampling_credit_results/sampling_credit_results"
 
 
 # ============================================================
 # HUGGINGFACE CACHE PATHS
 # ============================================================
 
-# HuggingFace cache - use NVMe (27TB free, faster)
-export HF_HOME="/eph/nvme0/hf_cache"
+# HuggingFace cache directory
+export HF_HOME="/path/to/hf_cache"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 
 # ============================================================

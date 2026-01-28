@@ -14,8 +14,7 @@ import os
 # ============================================================================
 
 # Base directory for prepared datasets (JSONL files).
-# Change this to "/path/to/datasets" when sharing publicly.
-DATASETS_BASE = os.environ.get("DATASETS_BASE", "/eph/nvme0/datasets")
+DATASETS_BASE = os.environ.get("DATASETS_BASE", "/path/to/datasets")
 
 
 # ============================================================================

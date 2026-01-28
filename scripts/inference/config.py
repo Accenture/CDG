@@ -32,20 +32,19 @@ class PathConfig:
     # BASE DIRECTORIES (read from env vars set by config.sh)
     # ============================================================
 
-    # Base directory for datasets (JSONL files) - use fast NVMe
-    DATASETS_BASE = os.environ.get("DATASETS_BASE", "/eph/nvme0/datasets")
+    # Base directory for datasets (JSONL files)
+    DATASETS_BASE = os.environ.get("DATASETS_BASE", "/path/to/datasets")
 
     # Base directory for inference results output
     OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/path/to/sampling_credit_results")
-    # OUTPUT_BASE = os.environ.get("OUTPUT_BASE", "/eph/nvme0/sampling_credit_results/sampling_credit_results")
 
 
     # ============================================================
     # HUGGINGFACE CACHE PATHS
     # ============================================================
 
-    # HuggingFace home directory (for model downloads) - use NVMe (27TB free, faster)
-    HF_CACHE = os.environ.get("HF_HOME", "/eph/nvme0/hf_cache")
+    # HuggingFace home directory (for model downloads)
+    HF_CACHE = os.environ.get("HF_HOME", "/path/to/hf_cache")
 
     # Transformers cache (usually same as HF_CACHE)
     TRANSFORMERS_CACHE = os.environ.get("TRANSFORMERS_CACHE", HF_CACHE)
