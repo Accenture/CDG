@@ -1,4 +1,4 @@
-# Sampling Credit: CDG Voting for Math Reasoning
+# Inference Time Optimization with Confidence Dynamics
 
 This repository contains code for our ICML 2026 paper *Inference Time Optimization with Confidence Dynamics*. It implements Confidence Dynamic Gain (CDG) based voting — a training-free inference-time answer-selection method that exploits how model confidence evolves along reasoning trajectories — and evaluates it on competition-level math reasoning benchmarks (AIME 2024, AIME 2025, HMMT 2025, BRUMO 2025) across four open-source reasoning LLMs (DeepSeek-R1-8B, gpt-oss-20B, Gemma-3-27B, QwQ-32B).
 
