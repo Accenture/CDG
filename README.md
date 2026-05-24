@@ -1,6 +1,6 @@
 # Sampling Credit: CDG Voting for Math Reasoning
 
-This repository contains code for evaluating Count-Dampened Gradient (CDG) voting methods on math reasoning benchmarks.
+This repository contains code for our ICML 2026 paper *Inference Time Optimization with Confidence Dynamics*. It implements Confidence Dynamic Gain (CDG) based voting — a training-free inference-time answer-selection method that exploits how model confidence evolves along reasoning trajectories — and evaluates it on competition-level math reasoning benchmarks (AIME 2024, AIME 2025, HMMT 2025, BRUMO 2025) across four open-source reasoning LLMs (DeepSeek-R1-8B, gpt-oss-20B, Gemma-3-27B, QwQ-32B).
 
 ---
 
@@ -154,7 +154,7 @@ All paths and parameters are centralized in config files:
 
 ## CDG Voting Method
 
-CDG (Count-Dampened Gradient) combines vote count with confidence gradient:
+CDG (Confidence Dynamic Gain) augments majority voting with two signals: (1) the mean per-trace confidence, and (2) the *dynamic gain* — i.e., how confidence evolves from the head to the tail of each reasoning trace. The final score for each candidate answer is:
 
 ```
 score = count^alpha * mean(mean_conf + beta * gradient)
@@ -196,3 +196,16 @@ For inference:
 - Transformers
 
 ---
+
+## Citation
+
+If you find this work useful, please cite our ICML 2026 paper:
+
+```bibtex
+@inproceedings{wang2026cdg,
+  title     = {Inference Time Optimization with Confidence Dynamics},
+  author    = {Wang, Yu and Liu, Minghao and Wang, Jiayun and Huang, Jinrui and Shah, Ankit and Wei, Wei},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2026}
+}
+```

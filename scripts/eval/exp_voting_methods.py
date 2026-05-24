@@ -6,7 +6,7 @@ Compares four methods across different trace budgets (8 -> 512):
 1. Majority Vote - simple count-based voting
 2. Mean Weighted - weighted vote using mean confidence
 3. Top10 Tail Filtered - DeepConf's best method (filter top 10% by tail conf)
-4. CDG - Count-Dampened Gradient (our method)
+4. CDG - Confidence Dynamic Gain (our method)
 
 Outputs:
 1. Scaling trend figure: accuracy vs trace count for each method

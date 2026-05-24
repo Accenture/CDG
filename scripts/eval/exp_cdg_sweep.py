@@ -153,7 +153,7 @@ def load_dataset(results_dir: str, position_pct: int = 10) -> dict:
 
 def cdg_voting(question_data: dict, alpha: float = 0.5, beta: float = 10) -> tuple:
     """
-    CDG (Count-Dampened Gradient) Voting.
+    CDG (Confidence Dynamic Gain) Voting.
 
     Formula: score = count^alpha * mean(mean_conf + beta * gradient)
 
